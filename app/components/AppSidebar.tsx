@@ -36,9 +36,7 @@ const menuItems = [
 ]
 
 const accountItems = [
-  { title: 'Nossa Comunidade', icon: Users, url: '#community' },
   { title: 'Perfil', icon: User, url: '#profile' },
-  { title: 'Contato', icon: Mail, url: '#contact' },
 ]
 
 interface AppSidebarProps {

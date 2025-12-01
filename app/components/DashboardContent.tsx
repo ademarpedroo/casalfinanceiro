@@ -17,6 +17,7 @@ import AddTransactionForm from './AddTransactionForm'
 import { Button } from '@/components/ui/button'
 import { Plus, TrendingUp, TrendingDown } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 interface DashboardContentProps {
   kpis: {
@@ -65,6 +66,31 @@ export default function DashboardContent({
 
   // Dashboard Principal - APENAS KPIs e Gráficos
   if (activeSection === 'dashboard' || activeSection === '') {
+    // Dados para o gráfico de barras (Receitas vs Despesas por mês)
+    const barChartData = [
+      { mes: 'Jan', receitas: 0, despesas: 0 },
+      { mes: 'Fev', receitas: 0, despesas: 0 },
+      { mes: 'Mar', receitas: 0, despesas: 0 },
+      { mes: 'Abr', receitas: 0, despesas: 0 },
+      { mes: 'Mai', receitas: 0, despesas: 0 },
+      { mes: 'Jun', receitas: 0, despesas: 0 },
+    ]
+
+    // Dados para o gráfico de pizza (Orçamento por categoria)
+    const pieChartData = budgets.length > 0
+      ? budgets.map(b => ({
+          name: categories.find(c => c.id === b.categoryId)?.name || 'Sem categoria',
+          value: b.spent || 0,
+        }))
+      : [
+          { name: 'Moradia', value: 0 },
+          { name: 'Alimentação', value: 0 },
+          { name: 'Transporte', value: 0 },
+          { name: 'Lazer', value: 0 },
+        ]
+
+    const COLORS = ['#FF6B00', '#2D7EF8', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899']
+
     return (
       <div className="space-y-6">
         {/* KPI Cards */}
@@ -75,17 +101,55 @@ export default function DashboardContent({
           {/* Gráfico de Receitas vs Despesas */}
           <Card className="p-6">
             <h3 className="text-lg font-bold mb-4">Receitas vs Despesas</h3>
-            <div className="h-64 flex items-center justify-center text-muted-foreground">
-              [Gráfico de barras aqui - Recharts]
-            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={barChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="mes" stroke="#888" fontSize={12} />
+                <YAxis stroke="#888" fontSize={12} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px'
+                  }}
+                />
+                <Legend />
+                <Bar dataKey="receitas" fill="#10B981" name="Receitas" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="despesas" fill="#FF6B00" name="Despesas" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </Card>
 
           {/* Gráfico de Orçamento */}
           <Card className="p-6">
-            <h3 className="text-lg font-bold mb-4">Orçamento por Categoria</h3>
-            <div className="h-64 flex items-center justify-center text-muted-foreground">
-              [Gráfico de pizza aqui - Recharts]
-            </div>
+            <h3 className="text-lg font-bold mb-4">Despesas por Categoria</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={pieChartData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) =>
+                    percent > 0 ? `${name} ${(percent * 100).toFixed(0)}%` : ''
+                  }
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {pieChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px'
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
           </Card>
         </div>
 
@@ -95,7 +159,7 @@ export default function DashboardContent({
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold">Últimas Receitas</h3>
               <Button variant="link" asChild>
-                <a href="#receitas">Ver todas</a>
+                <a href="#receitas" className="text-accent">Ver todas</a>
               </Button>
             </div>
             <IncomeList incomes={incomes.slice(0, 5)} />
@@ -105,7 +169,7 @@ export default function DashboardContent({
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold">Últimas Despesas</h3>
               <Button variant="link" asChild>
-                <a href="#despesas">Ver todas</a>
+                <a href="#despesas" className="text-accent">Ver todas</a>
               </Button>
             </div>
             <ExpenseList expenses={expenses.slice(0, 5)} />
