@@ -2,6 +2,18 @@
 import { createIncome } from '@/app/actions/income'
 import { useTransition, useState } from 'react'
 import Toast from './Toast'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { DollarSign } from 'lucide-react'
 
 interface Category {
   id: string
@@ -14,17 +26,22 @@ interface Category {
 export default function AddIncomeForm({ categories }: { categories: Category[] }) {
   const [isPending, startTransition] = useTransition()
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<string>('')
   const incomeCategories = categories.filter(c => c.type === 'INCOME')
 
   async function handleSubmit(formData: FormData) {
+    if (selectedCategory) {
+      formData.set('categoryId', selectedCategory)
+    }
+
     startTransition(async () => {
       const result = await createIncome(formData)
 
       if (result?.success) {
         setToast({ message: result.message!, type: 'success' })
-        // Reset form
         const form = document.getElementById('income-form') as HTMLFormElement
         form?.reset()
+        setSelectedCategory('')
       } else {
         setToast({ message: result?.error || 'Erro desconhecido', type: 'error' })
       }
@@ -33,50 +50,74 @@ export default function AddIncomeForm({ categories }: { categories: Category[] }
 
   return (
     <>
-      <form id="income-form" action={handleSubmit} className="p-4 border rounded-lg shadow-sm bg-white space-y-4">
-        <h3 className="font-semibold text-lg">Nova Receita</h3>
-        <input
-          name="description"
-          placeholder="Descrição (ex: Salário)"
-          className="block w-full border p-2 rounded"
-          required
-          disabled={isPending}
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            name="amount"
-            type="number"
-            step="0.01"
-            placeholder="Valor"
-            className="block w-full border p-2 rounded"
-            required
-            disabled={isPending}
-          />
-          <select name="categoryId" className="block w-full border p-2 rounded bg-white" disabled={isPending}>
-            <option value="">Sem categoria</option>
-            {incomeCategories.map(cat => (
-              <option key={cat.id} value={cat.id}>
-                {cat.icon} {cat.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <label className="block text-sm text-gray-600">Data Recebimento</label>
-        <input
-          name="date"
-          type="date"
-          className="block w-full border p-2 rounded"
-          required
-          disabled={isPending}
-        />
-        <button
-          type="submit"
-          disabled={isPending}
-          className="bg-green-600 text-white px-4 py-2 rounded w-full hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isPending ? 'Cadastrando...' : 'Cadastrar Receita'}
-        </button>
-      </form>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-green-600">
+            <DollarSign className="w-5 h-5" />
+            Nova Receita
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form id="income-form" action={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="description">Descrição</Label>
+              <Input
+                id="description"
+                name="description"
+                placeholder="Ex: Salário"
+                required
+                disabled={isPending}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="amount">Valor</Label>
+                <Input
+                  id="amount"
+                  name="amount"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  required
+                  disabled={isPending}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="categoryId">Categoria</Label>
+                <Select value={selectedCategory} onValueChange={setSelectedCategory} disabled={isPending}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sem categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {incomeCategories.map(cat => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.icon} {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="date">Data Recebimento</Label>
+              <Input
+                id="date"
+                name="date"
+                type="date"
+                required
+                disabled={isPending}
+              />
+            </div>
+
+            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={isPending}>
+              {isPending ? 'Cadastrando...' : 'Cadastrar Receita'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       {toast && (
         <Toast

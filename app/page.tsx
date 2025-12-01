@@ -16,7 +16,9 @@ import IncomeList from '@/app/components/IncomeList'
 import ExpenseList from '@/app/components/ExpenseList'
 import CardList from '@/app/components/CardList'
 import TransactionList from '@/app/components/TransactionList'
-import LogoutButton from '@/app/components/LogoutButton'
+import Navbar from '@/app/components/Navbar'
+import { AppSidebar } from '@/app/components/AppSidebar'
+import { SidebarInset } from '@/components/ui/sidebar'
 
 export default async function Home() {
   const session = await auth()
@@ -42,21 +44,11 @@ export default async function Home() {
   const availableCategories = await getCategoriesWithoutBudget(currentMonth, currentYear)
 
   return (
-    <main className="min-h-screen bg-gray-100 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <header className="flex justify-between items-center">
-            <div>
-                <h1 className="text-3xl font-bold text-slate-900">CasalFinanceiro</h1>
-                <p className="text-slate-600">Gestão inteligente para dois.</p>
-            </div>
-            <div className="flex items-center gap-4">
-                <div className="text-right">
-                    <p className="text-sm text-gray-600">Olá,</p>
-                    <p className="font-semibold text-gray-900">{session.user.name || session.user.email}</p>
-                </div>
-                <LogoutButton />
-            </div>
-        </header>
+    <>
+      <AppSidebar user={session.user} />
+      <SidebarInset>
+        <Navbar />
+        <main className="flex-1 space-y-6 p-6">
 
         <div className="grid md:grid-cols-3 gap-6">
             {/* Forms Column */}
@@ -118,7 +110,8 @@ export default async function Home() {
                 </section>
             </div>
         </div>
-      </div>
-    </main>
+        </main>
+      </SidebarInset>
+    </>
   )
 }

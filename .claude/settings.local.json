@@ -3,7 +3,11 @@
     "allow": [
       "Bash(xargs cat:*)",
       "Bash(npx prisma migrate dev:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest init:*)",
+      "Bash(npx shadcn@latest add button card input label select badge separator avatar dropdown-menu)",
+      "WebSearch",
+      "Bash(npx shadcn@latest add sidebar)"
     ],
     "deny": [],
     "ask": []
