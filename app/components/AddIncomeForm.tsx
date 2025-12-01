@@ -50,74 +50,79 @@ export default function AddIncomeForm({ categories }: { categories: Category[] }
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-green-600">
-            <DollarSign className="w-5 h-5" />
-            Nova Receita
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form id="income-form" action={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="description">Descrição</Label>
-              <Input
-                id="description"
-                name="description"
-                placeholder="Ex: Salário"
-                required
-                disabled={isPending}
-              />
-            </div>
+      <form id="income-form" action={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="description" className="text-sm font-medium">
+              Descrição
+            </Label>
+            <Input
+              id="description"
+              name="description"
+              placeholder="Ex: Salário"
+              required
+              disabled={isPending}
+              className="h-10"
+            />
+          </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="amount">Valor</Label>
-                <Input
-                  id="amount"
-                  name="amount"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  required
-                  disabled={isPending}
-                />
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="amount" className="text-sm font-medium">
+              Valor
+            </Label>
+            <Input
+              id="amount"
+              name="amount"
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              required
+              disabled={isPending}
+              className="h-10"
+            />
+          </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="categoryId">Categoria</Label>
-                <Select value={selectedCategory} onValueChange={setSelectedCategory} disabled={isPending}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sem categoria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {incomeCategories.map(cat => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {cat.icon} {cat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="categoryId" className="text-sm font-medium">
+              Categoria
+            </Label>
+            <Select value={selectedCategory} onValueChange={setSelectedCategory} disabled={isPending}>
+              <SelectTrigger className="h-10">
+                <SelectValue placeholder="Selecione" />
+              </SelectTrigger>
+              <SelectContent>
+                {incomeCategories.map(cat => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.icon} {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="date">Data Recebimento</Label>
-              <Input
-                id="date"
-                name="date"
-                type="date"
-                required
-                disabled={isPending}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="date" className="text-sm font-medium">
+              Data
+            </Label>
+            <Input
+              id="date"
+              name="date"
+              type="date"
+              required
+              disabled={isPending}
+              className="h-10"
+            />
+          </div>
+        </div>
 
-            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={isPending}>
-              {isPending ? 'Cadastrando...' : 'Cadastrar Receita'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+        <Button
+          type="submit"
+          className="w-full md:w-auto bg-green-600 hover:bg-green-700 h-10 px-8"
+          disabled={isPending}
+        >
+          {isPending ? 'Cadastrando...' : 'Adicionar Receita'}
+        </Button>
+      </form>
 
       {toast && (
         <Toast
