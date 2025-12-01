@@ -1,65 +1,124 @@
-import Image from "next/image";
+import { auth } from '@/auth'
+import { redirect } from 'next/navigation'
+import { getCards, getUpcomingInstallments, getTransactions } from '@/app/actions/cards'
+import { getExpenses } from '@/app/actions/expenses'
+import { getIncomes } from '@/app/actions/income'
+import { getCategories, seedDefaultCategories } from '@/app/actions/categories'
+import { getBudgetWithSpent, getCategoriesWithoutBudget } from '@/app/actions/budget'
+import AddCardForm from '@/app/components/AddCardForm'
+import AddTransactionForm from '@/app/components/AddTransactionForm'
+import AddExpenseForm from '@/app/components/AddExpenseForm'
+import AddIncomeForm from '@/app/components/AddIncomeForm'
+import InstallmentList from '@/app/components/InstallmentList'
+import CategoryManager from '@/app/components/CategoryManager'
+import BudgetManager from '@/app/components/BudgetManager'
+import IncomeList from '@/app/components/IncomeList'
+import ExpenseList from '@/app/components/ExpenseList'
+import CardList from '@/app/components/CardList'
+import TransactionList from '@/app/components/TransactionList'
+import LogoutButton from '@/app/components/LogoutButton'
 
-export default function Home() {
+export default async function Home() {
+  const session = await auth()
+
+  if (!session?.user?.id) {
+    redirect('/login')
+  }
+
+  // Seed default categories for this user if they don't have any
+  await seedDefaultCategories(session.user.id)
+
+  const currentDate = new Date()
+  const currentMonth = currentDate.getMonth() + 1
+  const currentYear = currentDate.getFullYear()
+
+  const cards = await getCards()
+  const upcomingInstallments = await getUpcomingInstallments()
+  const transactions = await getTransactions()
+  const expenses: any[] = await getExpenses()
+  const incomes: any[] = await getIncomes()
+  const categories = await getCategories()
+  const budgets = await getBudgetWithSpent(currentMonth, currentYear)
+  const availableCategories = await getCategoriesWithoutBudget(currentMonth, currentYear)
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-gray-100 p-4 md:p-8">
+      <div className="max-w-6xl mx-auto space-y-8">
+        <header className="flex justify-between items-center">
+            <div>
+                <h1 className="text-3xl font-bold text-slate-900">CasalFinanceiro</h1>
+                <p className="text-slate-600">Gestão inteligente para dois.</p>
+            </div>
+            <div className="flex items-center gap-4">
+                <div className="text-right">
+                    <p className="text-sm text-gray-600">Olá,</p>
+                    <p className="font-semibold text-gray-900">{session.user.name || session.user.email}</p>
+                </div>
+                <LogoutButton />
+            </div>
+        </header>
+
+        <div className="grid md:grid-cols-3 gap-6">
+            {/* Forms Column */}
+            <div className="space-y-6">
+                <section>
+                    <h2 className="text-xl font-bold mb-4 text-slate-800">Cadastros</h2>
+                    <div className="space-y-6">
+                        <AddIncomeForm categories={categories} />
+                        <AddExpenseForm categories={categories} />
+                        <AddCardForm />
+                        <AddTransactionForm cards={cards} />
+                    </div>
+                </section>
+
+                {/* Category Manager */}
+                <section>
+                    <CategoryManager categories={categories} />
+                </section>
+            </div>
+
+            {/* Dashboard / Status Column */}
+            <div className="md:col-span-2 space-y-6">
+                {/* Budget Manager */}
+                <BudgetManager
+                  budgets={budgets}
+                  availableCategories={availableCategories}
+                  currentMonth={currentMonth}
+                  currentYear={currentYear}
+                />
+
+                {/* Incomes List */}
+                <section className="bg-white p-6 rounded-xl shadow-sm">
+                    <h2 className="text-xl font-bold mb-4 text-slate-800">Receitas</h2>
+                    <IncomeList incomes={incomes} />
+                </section>
+
+                {/* Cards List */}
+                <section className="bg-white p-6 rounded-xl shadow-sm">
+                    <h2 className="text-xl font-bold mb-4 text-slate-800">Cartões de Crédito</h2>
+                    <CardList cards={cards} />
+                </section>
+
+                {/* Transactions List */}
+                <section className="bg-white p-6 rounded-xl shadow-sm">
+                    <h2 className="text-xl font-bold mb-4 text-slate-800">Todas as Transações</h2>
+                    <TransactionList transactions={transactions} />
+                </section>
+
+                {/* Upcoming Installments */}
+                <section className="bg-white p-6 rounded-xl shadow-sm">
+                    <h2 className="text-xl font-bold mb-4 text-slate-800">Próximas Parcelas (10)</h2>
+                    <InstallmentList installments={upcomingInstallments} />
+                </section>
+
+                {/* Expenses List */}
+                <section className="bg-white p-6 rounded-xl shadow-sm">
+                    <h2 className="text-xl font-bold mb-4 text-slate-800">Contas a Pagar (Boletos/Fixas)</h2>
+                    <ExpenseList expenses={expenses} />
+                </section>
+            </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+      </div>
+    </main>
+  )
 }
