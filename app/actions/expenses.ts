@@ -96,3 +96,104 @@ export async function deleteExpense(id: string) {
     return { success: false, error: 'Erro ao excluir despesa. Tente novamente.' }
   }
 }
+
+// Busca TODAS as despesas (pagas e não pagas)
+export async function getAllExpenses() {
+  return await prisma.expense.findMany({
+    include: {
+      category: true
+    },
+    orderBy: { dueDate: 'desc' }
+  })
+}
+
+// Busca despesas por período
+export async function getExpensesByDateRange(startDate: Date, endDate: Date) {
+  return await prisma.expense.findMany({
+    where: {
+      dueDate: {
+        gte: startDate,
+        lte: endDate
+      }
+    },
+    include: {
+      category: true
+    },
+    orderBy: { dueDate: 'desc' }
+  })
+}
+
+// Resumo de despesas por categoria (para gráficos)
+export async function getExpensesCategorySummary(month: number, year: number) {
+  const startDate = new Date(year, month - 1, 1)
+  const endDate = new Date(year, month, 0, 23, 59, 59)
+
+  const expenses = await prisma.expense.findMany({
+    where: {
+      dueDate: {
+        gte: startDate,
+        lte: endDate
+      }
+    },
+    include: {
+      category: true
+    }
+  })
+
+  // Agrupa por categoria
+  const categoryMap = new Map<string, { name: string, color: string, icon: string | null, total: number, count: number }>()
+
+  expenses.forEach(expense => {
+    const key = expense.categoryId || 'sem-categoria'
+    const existing = categoryMap.get(key)
+
+    if (existing) {
+      existing.total += expense.amount
+      existing.count += 1
+    } else {
+      categoryMap.set(key, {
+        name: expense.category?.name || 'Sem Categoria',
+        color: expense.category?.color || '#6B7280',
+        icon: expense.category?.icon || null,
+        total: expense.amount,
+        count: 1
+      })
+    }
+  })
+
+  const totalAll = expenses.reduce((sum, e) => sum + e.amount, 0)
+
+  return Array.from(categoryMap.entries()).map(([id, data]) => ({
+    categoryId: id === 'sem-categoria' ? null : id,
+    ...data,
+    percentage: totalAll > 0 ? (data.total / totalAll) * 100 : 0
+  })).sort((a, b) => b.total - a.total)
+}
+
+// Cria despesa rápida (versão simplificada)
+export async function createQuickExpense(data: {
+  description: string
+  amount: number
+  date: Date
+  categoryId?: string
+}) {
+  try {
+    await prisma.expense.create({
+      data: {
+        description: data.description,
+        amount: data.amount,
+        dueDate: startOfDay(data.date),
+        categoryId: data.categoryId || null,
+        isFixed: false,
+        isPaid: true,
+        paidAt: new Date()
+      }
+    })
+
+    revalidatePath('/')
+    return { success: true, message: 'Gasto cadastrado!' }
+  } catch (error) {
+    console.error('Error creating quick expense:', error)
+    return { success: false, error: 'Erro ao cadastrar gasto.' }
+  }
+}

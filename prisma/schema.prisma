@@ -125,16 +125,19 @@ model Expense {
 }
 
 model CreditCard {
-  id          String            @id @default(uuid())
-  userId      String
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  limit       Float
-  closingDay  Int
-  dueDay      Int
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  transactions CardTransaction[]
+  id             String            @id @default(uuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  limit          Float
+  closingDay     Int
+  dueDay         Int
+  color          String            @default("nubank") // nubank, inter, c6blue, black, platinum, gold, red, graphite
+  brand          String            @default("mastercard") // visa, mastercard, elo, amex
+  lastFourDigits String?           // 4 últimos dígitos do cartão
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  transactions   CardTransaction[]
 }
 
 model CardTransaction {

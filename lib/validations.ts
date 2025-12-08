@@ -52,6 +52,14 @@ export const budgetSchema = z.object({
   limit: z.number().positive('Limite deve ser positivo').max(999999999, 'Limite muito alto'),
 })
 
+// Quick Expense validation (simplified for FAB)
+export const quickExpenseSchema = z.object({
+  description: z.string().min(1, 'Descrição é obrigatória').max(100, 'Descrição muito longa'),
+  amount: z.number().positive('Valor deve ser positivo').max(999999999, 'Valor muito alto'),
+  date: z.date(),
+  categoryId: z.string().optional(),
+})
+
 // Helper to parse FormData to schema
 export function parseFormData<T>(
   formData: FormData,
