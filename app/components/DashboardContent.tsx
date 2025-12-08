@@ -4,11 +4,14 @@ import { useEffect, useState } from 'react'
 import KPICards from './KPICards'
 import IncomeList from './IncomeList'
 import ExpenseList from './ExpenseList'
+import IncomeCrud from './IncomeCrud'
+import ExpenseCrud from './ExpenseCrud'
+import CategoryCrud from './CategoryCrud'
+import BudgetCrud from './BudgetCrud'
 import CreditCardDisplay from './CreditCardDisplay'
 import TransactionList from './TransactionList'
-import CategoryManager from './CategoryManager'
-import BudgetManager from './BudgetManager'
 import InstallmentList from './InstallmentList'
+import CardCrud from './CardCrud'
 import AddCardForm from './AddCardForm'
 import AddTransactionForm from './AddTransactionForm'
 import FloatingActionButton from './FloatingActionButton'
@@ -186,35 +189,7 @@ export default function DashboardContent({
   if (activeSection === 'receitas') {
     return (
       <>
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl">
-                <TrendingUp className="w-6 h-6 text-white" />
-              </div>
-              Receitas
-            </h1>
-            <p className="text-muted-foreground mt-1">Gerencie suas receitas mensais</p>
-          </div>
-
-          {/* Card de estatística */}
-          <Card className="p-6 bg-gradient-to-br from-green-500 to-emerald-600 text-white">
-            <div className="flex items-center gap-4">
-              <TrendingUp className="w-10 h-10" />
-              <div>
-                <p className="text-sm opacity-90">Total do Mês</p>
-                <p className="text-3xl font-bold">{formatCurrency(kpis.totalIncome)}</p>
-              </div>
-            </div>
-          </Card>
-
-          {/* Lista de receitas */}
-          <Card className="p-6">
-            <h2 className="text-lg font-bold mb-4">Todas as Receitas</h2>
-            <IncomeList incomes={incomes} />
-          </Card>
-        </div>
-
+        <IncomeCrud incomes={incomes} categories={categories} />
         <FloatingActionButton categories={categories} />
       </>
     )
@@ -224,35 +199,7 @@ export default function DashboardContent({
   if (activeSection === 'despesas') {
     return (
       <>
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl">
-                <TrendingDown className="w-6 h-6 text-white" />
-              </div>
-              Despesas
-            </h1>
-            <p className="text-muted-foreground mt-1">Controle seus gastos mensais</p>
-          </div>
-
-          {/* Card de estatística */}
-          <Card className="p-6 bg-gradient-to-br from-orange-500 to-red-500 text-white">
-            <div className="flex items-center gap-4">
-              <TrendingDown className="w-10 h-10" />
-              <div>
-                <p className="text-sm opacity-90">Total do Mês</p>
-                <p className="text-3xl font-bold">{formatCurrency(kpis.totalExpenses)}</p>
-              </div>
-            </div>
-          </Card>
-
-          {/* Lista de despesas */}
-          <Card className="p-6">
-            <h2 className="text-lg font-bold mb-4">Todas as Despesas</h2>
-            <ExpenseList expenses={expenses} />
-          </Card>
-        </div>
-
+        <ExpenseCrud expenses={expenses} categories={categories} />
         <FloatingActionButton categories={categories} />
       </>
     )
@@ -262,93 +209,7 @@ export default function DashboardContent({
   if (activeSection === 'cartoes') {
     return (
       <>
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
-                <CreditCardIcon className="w-6 h-6 text-white" />
-              </div>
-              Cartões de Crédito
-            </h1>
-            <p className="text-muted-foreground mt-1">Gerencie seus cartões e transações</p>
-          </div>
-
-          {/* Grid de Cartões */}
-          {cards.length > 0 ? (
-            <div>
-              <h2 className="text-lg font-semibold mb-4">Meus Cartões</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {cards.map((card: any) => (
-                  <CreditCardDisplay key={card.id} card={card} />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <Card className="relative overflow-hidden border-2 border-dashed border-muted">
-              <div className="relative p-16 text-center space-y-6">
-                <div className="relative inline-block">
-                  <div className="relative bg-gradient-to-br from-blue-500 to-indigo-600 p-8 rounded-2xl">
-                    <Wallet className="w-16 h-16 text-white" />
-                  </div>
-                  <div className="absolute -top-2 -right-2 bg-yellow-400 rounded-full p-2">
-                    <Sparkles className="w-5 h-5 text-yellow-900" />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <h3 className="text-2xl font-bold">Comece agora sua jornada financeira</h3>
-                  <p className="text-muted-foreground text-lg max-w-md mx-auto">
-                    Adicione seu primeiro cartão de crédito e tenha controle total sobre seus gastos
-                  </p>
-                </div>
-
-                <p className="text-sm text-muted-foreground">
-                  Use o botão <span className="inline-flex items-center justify-center w-6 h-6 bg-orange-500 text-white rounded-full text-xs font-bold">+</span> para adicionar
-                </p>
-              </div>
-            </Card>
-          )}
-
-          {/* Nova Transação */}
-          {cards.length > 0 && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="lg" className="w-full">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Nova Transação no Cartão
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg">
-                      <CreditCardIcon className="w-5 h-5 text-white" />
-                    </div>
-                    Nova Transação
-                  </DialogTitle>
-                </DialogHeader>
-                <AddTransactionForm cards={cards} />
-              </DialogContent>
-            </Dialog>
-          )}
-
-          {/* Transações */}
-          {transactions.length > 0 && (
-            <Card className="p-6">
-              <h2 className="text-lg font-bold mb-4">Últimas Transações</h2>
-              <TransactionList transactions={transactions} />
-            </Card>
-          )}
-
-          {/* Parcelas */}
-          {upcomingInstallments.length > 0 && (
-            <Card className="p-6">
-              <h2 className="text-lg font-bold mb-4">Próximas Parcelas</h2>
-              <InstallmentList installments={upcomingInstallments} />
-            </Card>
-          )}
-        </div>
-
+        <CardCrud cards={cards} />
         <FloatingActionButton categories={categories} />
       </>
     )
@@ -358,20 +219,12 @@ export default function DashboardContent({
   if (activeSection === 'orcamento') {
     return (
       <>
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold">Orçamento Mensal</h1>
-            <p className="text-muted-foreground">Controle seus limites por categoria</p>
-          </div>
-
-          <BudgetManager
-            budgets={budgets}
-            availableCategories={availableCategories}
-            currentMonth={currentMonth}
-            currentYear={currentYear}
-          />
-        </div>
-
+        <BudgetCrud
+          budgets={budgets}
+          availableCategories={availableCategories}
+          currentMonth={currentMonth}
+          currentYear={currentYear}
+        />
         <FloatingActionButton categories={categories} />
       </>
     )
@@ -381,15 +234,7 @@ export default function DashboardContent({
   if (activeSection === 'categorias') {
     return (
       <>
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold">Categorias</h1>
-            <p className="text-muted-foreground">Organize suas receitas e despesas</p>
-          </div>
-
-          <CategoryManager categories={categories} />
-        </div>
-
+        <CategoryCrud categories={categories} />
         <FloatingActionButton categories={categories} />
       </>
     )
