@@ -80,14 +80,23 @@ export default function DashboardContent({
 }: DashboardContentProps) {
   const [activeSection, setActiveSection] = useState('dashboard')
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('6m')
+  const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
     const handleHashChange = () => {
+      setIsLoading(true)
       const hash = window.location.hash.replace('#', '') || 'dashboard'
-      setActiveSection(hash)
+      // Pequeno delay para mostrar loading
+      setTimeout(() => {
+        setActiveSection(hash)
+        setIsLoading(false)
+      }, 150)
     }
 
-    handleHashChange()
+    // Carrega inicial sem loading
+    const initialHash = window.location.hash.replace('#', '') || 'dashboard'
+    setActiveSection(initialHash)
+
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
@@ -120,53 +129,91 @@ export default function DashboardContent({
     }
   }
 
+  // Combinar despesas normais com parcelas de cartao
+  const allExpensesWithCards = useMemo(() => {
+    // Despesas normais
+    const normalExpenses = expenses.map((exp: any) => ({
+      id: exp.id,
+      description: exp.description,
+      amount: exp.amount,
+      dueDate: new Date(exp.dueDate),
+      isPaid: exp.isPaid || false,
+      isCard: false,
+      category: exp.category,
+    }))
+
+    // Parcelas de cartao
+    const cardInstallments = transactions.flatMap((t: any) =>
+      t.installments.map((inst: any) => ({
+        id: `card-${inst.id}`,
+        description: `${t.description} (${t.card.name} ${inst.number}/${t.installmentsCount})`,
+        amount: inst.amount,
+        dueDate: new Date(inst.dueDate),
+        isPaid: inst.isPaid || false,
+        isCard: true,
+        cardName: t.card.name,
+        cardColor: t.card.color,
+      }))
+    )
+
+    return [...normalExpenses, ...cardInstallments]
+  }, [expenses, transactions])
+
   // Filtrar dados por período
   const filteredIncomes = useMemo(() => {
     const filterDate = getFilterDate(periodFilter)
-    return incomes.filter(i => new Date(i.date) >= filterDate)
+    return incomes.filter((i: any) => new Date(i.date) >= filterDate)
   }, [incomes, periodFilter])
 
   const filteredExpenses = useMemo(() => {
     const filterDate = getFilterDate(periodFilter)
-    return expenses.filter(e => new Date(e.dueDate) >= filterDate)
-  }, [expenses, periodFilter])
+    return allExpensesWithCards.filter(e => new Date(e.dueDate) >= filterDate)
+  }, [allExpensesWithCards, periodFilter])
 
-  // Gerar dados do gráfico de área baseado nos dados reais
+  // Gerar dados do gráfico de área baseado nos dados reais (passado + futuro)
   const areaChartData = useMemo(() => {
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
     const now = new Date()
 
-    // Determinar quantos meses mostrar baseado no filtro
-    let monthsToShow = 6
+    // Determinar quantos meses passados e futuros mostrar baseado no filtro
+    let monthsPast = 3
+    let monthsFuture = 3
     switch (periodFilter) {
       case '7d':
       case '1m':
-        monthsToShow = 1
+        monthsPast = 1
+        monthsFuture = 1
         break
       case '3m':
-        monthsToShow = 3
+        monthsPast = 2
+        monthsFuture = 2
         break
       case '6m':
-        monthsToShow = 6
+        monthsPast = 3
+        monthsFuture = 3
         break
       case '1y':
       case 'all':
-        monthsToShow = 12
+        monthsPast = 6
+        monthsFuture = 6
         break
     }
 
     const data = []
-    for (let i = monthsToShow - 1; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    // Meses passados + mes atual + meses futuros
+    for (let i = -monthsPast; i <= monthsFuture; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() + i, 1)
       const month = date.getMonth()
       const year = date.getFullYear()
+      const isCurrentMonth = i === 0
+      const isFuture = i > 0
 
       const monthIncomes = incomes.filter(inc => {
         const incDate = new Date(inc.date)
         return incDate.getMonth() === month && incDate.getFullYear() === year
       })
 
-      const monthExpenses = expenses.filter(exp => {
+      const monthExpenses = allExpensesWithCards.filter(exp => {
         const expDate = new Date(exp.dueDate)
         return expDate.getMonth() === month && expDate.getFullYear() === year
       })
@@ -175,17 +222,86 @@ export default function DashboardContent({
       const totalDespesas = monthExpenses.reduce((sum, exp) => sum + exp.amount, 0)
 
       data.push({
-        mes: months[month],
+        mes: isCurrentMonth ? `${months[month]}*` : months[month],
         receitas: totalReceitas,
         despesas: totalDespesas,
+        isFuture,
+        isCurrentMonth,
       })
     }
 
     return data
-  }, [incomes, expenses, periodFilter])
+  }, [incomes, allExpensesWithCards, periodFilter])
 
   // Verificar se há dados reais
   const hasChartData = areaChartData.some(d => d.receitas > 0 || d.despesas > 0)
+
+  // Proximos compromissos (despesas futuras nao pagas)
+  const upcomingExpenses = useMemo(() => {
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    return allExpensesWithCards
+      .filter(exp => {
+        const dueDate = new Date(exp.dueDate)
+        return !exp.isPaid && dueDate >= now
+      })
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+      .slice(0, 5)
+  }, [allExpensesWithCards])
+
+  // Proximas receitas
+  const upcomingIncomes = useMemo(() => {
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    return incomes
+      .filter(inc => {
+        const date = new Date(inc.date)
+        return date >= now
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 5)
+  }, [incomes])
+
+  // Total de compromissos futuros
+  const totalFutureExpenses = useMemo(() => {
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    return allExpensesWithCards
+      .filter(exp => !exp.isPaid && new Date(exp.dueDate) >= now)
+      .reduce((sum, exp) => sum + exp.amount, 0)
+  }, [allExpensesWithCards])
+
+  const totalFutureIncomes = useMemo(() => {
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    return incomes
+      .filter(inc => new Date(inc.date) >= now)
+      .reduce((sum, inc) => sum + inc.amount, 0)
+  }, [incomes])
+
+  // Loading component - DEVE vir DEPOIS de todos os hooks
+  if (isLoading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-6">
+          {/* Spinner animado */}
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-indigo-100 rounded-full"></div>
+            <div className="absolute top-0 left-0 w-16 h-16 border-4 border-transparent border-t-indigo-600 rounded-full animate-spin"></div>
+          </div>
+          {/* Texto */}
+          <div className="text-center">
+            <p className="text-gray-700 font-medium">Carregando</p>
+            <p className="text-gray-400 text-sm">Aguarde um momento...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // Dashboard Principal
   if (activeSection === 'dashboard' || activeSection === '') {
@@ -465,12 +581,109 @@ export default function DashboardContent({
             </Card>
           </div>
 
+          {/* Projecao Futura */}
+          <Card className="bg-gradient-to-r from-indigo-500 to-purple-600 shadow-sm border-0 p-6 text-white">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">Projecao Futura</h3>
+                <p className="text-sm text-white/70">Compromissos a partir de hoje</p>
+              </div>
+              <div className="flex gap-6">
+                <div className="text-center">
+                  <p className="text-sm text-white/70">Receitas previstas</p>
+                  <p className="text-2xl font-bold text-emerald-300">{formatCurrency(totalFutureIncomes)}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-white/70">Despesas previstas</p>
+                  <p className="text-2xl font-bold text-rose-300">{formatCurrency(totalFutureExpenses)}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-white/70">Saldo projetado</p>
+                  <p className={`text-2xl font-bold ${totalFutureIncomes - totalFutureExpenses >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {formatCurrency(totalFutureIncomes - totalFutureExpenses)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Proximos Compromissos */}
+          <div className="grid md:grid-cols-2 gap-6">
+            <Card className="bg-white shadow-sm border-0 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Proximas Receitas</h3>
+                  <p className="text-sm text-gray-500">Receitas agendadas</p>
+                </div>
+                <Button variant="ghost" size="sm" asChild className="text-emerald-600 hover:text-emerald-700">
+                  <a href="#receitas">Ver todas</a>
+                </Button>
+              </div>
+              {upcomingIncomes.length > 0 ? (
+                <div className="space-y-3">
+                  {upcomingIncomes.map((inc: any) => (
+                    <div key={inc.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                        <div>
+                          <p className="font-medium text-gray-900">{inc.description}</p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(inc.date).toLocaleDateString('pt-BR')}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="font-semibold text-emerald-600">{formatCurrency(inc.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-400">
+                  <p>Nenhuma receita futura</p>
+                </div>
+              )}
+            </Card>
+
+            <Card className="bg-white shadow-sm border-0 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Proximas Despesas</h3>
+                  <p className="text-sm text-gray-500">Contas a vencer</p>
+                </div>
+                <Button variant="ghost" size="sm" asChild className="text-rose-600 hover:text-rose-700">
+                  <a href="#despesas">Ver todas</a>
+                </Button>
+              </div>
+              {upcomingExpenses.length > 0 ? (
+                <div className="space-y-3">
+                  {upcomingExpenses.map((exp: any) => (
+                    <div key={exp.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+                        <div>
+                          <p className="font-medium text-gray-900">{exp.description}</p>
+                          <p className="text-xs text-gray-500">
+                            Vence em {new Date(exp.dueDate).toLocaleDateString('pt-BR')}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="font-semibold text-rose-600">{formatCurrency(exp.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-400">
+                  <p>Nenhuma despesa pendente</p>
+                </div>
+              )}
+            </Card>
+          </div>
+
           {/* Listas de Transações */}
           <div className="grid md:grid-cols-2 gap-6">
             <Card className="bg-white shadow-sm border-0 p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Últimas Receitas</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Ultimas Receitas</h3>
                   <p className="text-sm text-gray-500">{incomes.length} registros</p>
                 </div>
                 <Button variant="ghost" size="sm" asChild className="text-indigo-600 hover:text-indigo-700">
@@ -488,7 +701,7 @@ export default function DashboardContent({
             <Card className="bg-white shadow-sm border-0 p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Últimas Despesas</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Ultimas Despesas</h3>
                   <p className="text-sm text-gray-500">{expenses.length} registros</p>
                 </div>
                 <Button variant="ghost" size="sm" asChild className="text-indigo-600 hover:text-indigo-700">

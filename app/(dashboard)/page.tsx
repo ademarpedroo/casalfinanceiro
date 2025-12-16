@@ -1,7 +1,7 @@
 import { auth } from '@/auth'
 import { redirect } from 'next/navigation'
 import { getCards, getUpcomingInstallments, getTransactions } from '@/app/actions/cards'
-import { getExpenses } from '@/app/actions/expenses'
+import { getAllExpenses } from '@/app/actions/expenses'
 import { getIncomes } from '@/app/actions/income'
 import { getCategories, seedDefaultCategories } from '@/app/actions/categories'
 import { getBudgetWithSpent, getCategoriesWithoutBudget } from '@/app/actions/budget'
@@ -26,14 +26,26 @@ export default async function Home() {
   const currentMonth = currentDate.getMonth() + 1
   const currentYear = currentDate.getFullYear()
 
-  const cards = await getCards()
-  const upcomingInstallments = await getUpcomingInstallments()
-  const transactions = await getTransactions()
-  const expenses: any[] = await getExpenses()
-  const incomes: any[] = await getIncomes()
-  const categories = await getCategories()
-  const budgets = await getBudgetWithSpent(currentMonth, currentYear)
-  const availableCategories = await getCategoriesWithoutBudget(currentMonth, currentYear)
+  // Executa todas as queries em paralelo para melhor performance
+  const [
+    cards,
+    upcomingInstallments,
+    transactions,
+    expenses,
+    incomes,
+    categories,
+    budgets,
+    availableCategories
+  ] = await Promise.all([
+    getCards(),
+    getUpcomingInstallments(),
+    getTransactions(),
+    getAllExpenses(),
+    getIncomes(),
+    getCategories(),
+    getBudgetWithSpent(currentMonth, currentYear),
+    getCategoriesWithoutBudget(currentMonth, currentYear)
+  ])
 
   // Calculate KPIs
   const kpis = calculateKPIs(incomes, expenses, budgets)
