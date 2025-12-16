@@ -33,6 +33,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 
 interface User {
   id?: string
@@ -73,8 +74,6 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null
 }
 
-type PeriodFilter = '7d' | '1m' | '3m' | '6m' | '1y' | 'all'
-
 export default function DashboardContent({
   user,
   incomes,
@@ -89,10 +88,41 @@ export default function DashboardContent({
   currentYear,
 }: DashboardContentProps) {
   const [activeSection, setActiveSection] = useState('dashboard')
-  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('1m')
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth)
+  const [selectedYear, setSelectedYear] = useState(currentYear)
+  const [showAllTime, setShowAllTime] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [isLoading, setIsLoading] = useState(false)
   const [reportView, setReportView] = useState<'planilha' | 'analise'>('planilha')
+
+  const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+
+  const goToPreviousMonth = () => {
+    if (selectedMonth === 1) {
+      setSelectedMonth(12)
+      setSelectedYear(selectedYear - 1)
+    } else {
+      setSelectedMonth(selectedMonth - 1)
+    }
+    setShowAllTime(false)
+  }
+
+  const goToNextMonth = () => {
+    if (selectedMonth === 12) {
+      setSelectedMonth(1)
+      setSelectedYear(selectedYear + 1)
+    } else {
+      setSelectedMonth(selectedMonth + 1)
+    }
+    setShowAllTime(false)
+  }
+
+  const goToCurrentMonth = () => {
+    setSelectedMonth(currentMonth)
+    setSelectedYear(currentYear)
+    setShowAllTime(false)
+  }
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -120,25 +150,21 @@ export default function DashboardContent({
     }).format(value)
   }
 
-  // Função para obter a data de corte baseada no filtro
-  const getFilterDate = (filter: PeriodFilter): Date => {
-    const now = new Date()
-    switch (filter) {
-      case '7d':
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      case '1m':
-        return new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
-      case '3m':
-        return new Date(now.getFullYear(), now.getMonth() - 3, now.getDate())
-      case '6m':
-        return new Date(now.getFullYear(), now.getMonth() - 6, now.getDate())
-      case '1y':
-        return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
-      case 'all':
-        return new Date(2000, 0, 1)
-      default:
-        return new Date(now.getFullYear(), now.getMonth() - 6, now.getDate())
+  // Função para obter o intervalo de datas baseada no mês/ano selecionado
+  const getFilterDateRange = (): { start: Date; end: Date } => {
+    if (showAllTime) {
+      return {
+        start: new Date(2000, 0, 1),
+        end: new Date(2100, 11, 31)
+      }
     }
+
+    // Primeiro dia do mês selecionado
+    const start = new Date(selectedYear, selectedMonth - 1, 1)
+    // Último dia do mês selecionado
+    const end = new Date(selectedYear, selectedMonth, 0, 23, 59, 59)
+
+    return { start, end }
   }
 
   // Combinar despesas normais com parcelas de cartao
@@ -176,22 +202,24 @@ export default function DashboardContent({
 
   // Filtrar dados por período
   const filteredIncomes = useMemo(() => {
-    const filterDate = getFilterDate(periodFilter)
+    const { start, end } = getFilterDateRange()
     return incomes.filter((i: any) => {
-      const dateMatch = new Date(i.date) >= filterDate
+      const date = new Date(i.date)
+      const dateMatch = date >= start && date <= end
       const categoryMatch = categoryFilter === 'all' || i.categoryId === categoryFilter
       return dateMatch && categoryMatch
     })
-  }, [incomes, periodFilter, categoryFilter])
+  }, [incomes, selectedMonth, selectedYear, showAllTime, categoryFilter])
 
   const filteredExpenses = useMemo(() => {
-    const filterDate = getFilterDate(periodFilter)
+    const { start, end } = getFilterDateRange()
     return allExpensesWithCards.filter(e => {
-      const dateMatch = new Date(e.dueDate) >= filterDate
+      const date = new Date(e.dueDate)
+      const dateMatch = date >= start && date <= end
       const categoryMatch = categoryFilter === 'all' || e.categoryId === categoryFilter
       return dateMatch && categoryMatch
     })
-  }, [allExpensesWithCards, periodFilter, categoryFilter])
+  }, [allExpensesWithCards, selectedMonth, selectedYear, showAllTime, categoryFilter])
 
   // KPIs calculados dinamicamente baseado nos dados filtrados
   const filteredKPIs = useMemo(() => {
@@ -213,43 +241,17 @@ export default function DashboardContent({
     return { totalIncome, totalExpenses, balance, budgetUsage }
   }, [filteredIncomes, filteredExpenses, budgets])
 
-  // Gerar dados do gráfico de área baseado nos dados reais (passado + futuro)
+  // Gerar dados do gráfico de área baseado nos dados reais (6 meses antes e depois do selecionado)
   const areaChartData = useMemo(() => {
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-    const now = new Date()
-
-    // Determinar quantos meses passados e futuros mostrar baseado no filtro
-    let monthsPast = 3
-    let monthsFuture = 3
-    switch (periodFilter) {
-      case '7d':
-      case '1m':
-        monthsPast = 1
-        monthsFuture = 1
-        break
-      case '3m':
-        monthsPast = 2
-        monthsFuture = 2
-        break
-      case '6m':
-        monthsPast = 3
-        monthsFuture = 3
-        break
-      case '1y':
-      case 'all':
-        monthsPast = 6
-        monthsFuture = 6
-        break
-    }
 
     const data = []
-    // Meses passados + mes atual + meses futuros
-    for (let i = -monthsPast; i <= monthsFuture; i++) {
-      const date = new Date(now.getFullYear(), now.getMonth() + i, 1)
+    // 3 meses antes + mes selecionado + 3 meses depois
+    for (let i = -3; i <= 3; i++) {
+      const date = new Date(selectedYear, selectedMonth - 1 + i, 1)
       const month = date.getMonth()
       const year = date.getFullYear()
-      const isCurrentMonth = i === 0
-      const isFuture = i > 0
+      const isSelectedMonth = i === 0
 
       const monthIncomes = incomes.filter(inc => {
         const incDate = new Date(inc.date)
@@ -265,16 +267,15 @@ export default function DashboardContent({
       const totalDespesas = monthExpenses.reduce((sum, exp) => sum + exp.amount, 0)
 
       data.push({
-        mes: isCurrentMonth ? `${months[month]}*` : months[month],
+        mes: isSelectedMonth ? `${months[month]}*` : months[month],
         receitas: totalReceitas,
         despesas: totalDespesas,
-        isFuture,
-        isCurrentMonth,
+        isSelectedMonth,
       })
     }
 
     return data
-  }, [incomes, allExpensesWithCards, periodFilter])
+  }, [incomes, allExpensesWithCards, selectedMonth, selectedYear])
 
   // Verificar se há dados reais
   const hasChartData = areaChartData.some(d => d.receitas > 0 || d.despesas > 0)
@@ -379,18 +380,84 @@ export default function DashboardContent({
 
     const hasBudgetData = budgetChartData.length > 0
 
-    const periodLabels: Record<PeriodFilter, string> = {
-      '7d': '7 dias',
-      '1m': '1 mês',
-      '3m': '3 meses',
-      '6m': '6 meses',
-      '1y': '1 ano',
-      'all': 'Tudo',
-    }
+    const isCurrentMonthSelected = selectedMonth === currentMonth && selectedYear === currentYear
 
     return (
       <>
         <div className="space-y-6">
+          {/* Seletor de Mês */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm">
+            <div className="flex items-center gap-4">
+              {/* Navegação de Mês */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={goToPreviousMonth}
+                  className="h-9 w-9"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                <div className="flex items-center gap-2 min-w-[180px] justify-center">
+                  <Calendar className="h-4 w-4 text-indigo-600" />
+                  <span className="font-semibold text-gray-900">
+                    {monthNames[selectedMonth - 1]} {selectedYear}
+                  </span>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={goToNextMonth}
+                  className="h-9 w-9"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Botão Mês Atual */}
+              {!isCurrentMonthSelected && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={goToCurrentMonth}
+                  className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+                >
+                  Mês Atual
+                </Button>
+              )}
+
+              {/* Botão Ver Tudo */}
+              <Button
+                variant={showAllTime ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setShowAllTime(!showAllTime)}
+                className={showAllTime ? 'bg-indigo-600 hover:bg-indigo-700' : ''}
+              >
+                {showAllTime ? 'Mostrando Tudo' : 'Ver Tudo'}
+              </Button>
+            </div>
+
+            {/* Filtro de Categoria */}
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-[180px] bg-white">
+                <SelectValue placeholder="Todas categorias" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas categorias</SelectItem>
+                {categories.map((cat: any) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    <span className="flex items-center gap-2">
+                      <span>{cat.icon || '📁'}</span>
+                      <span>{cat.name}</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* KPI Cards */}
           <KPICards {...filteredKPIs} />
 
@@ -400,44 +467,9 @@ export default function DashboardContent({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Fluxo de Caixa</h3>
-                  <p className="text-sm text-gray-500">Receitas vs Despesas</p>
-                </div>
-
-                {/* Filtros de Período */}
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
-                    {(['7d', '1m', '3m', '6m', '1y', 'all'] as PeriodFilter[]).map((period) => (
-                      <button
-                        key={period}
-                        onClick={() => setPeriodFilter(period)}
-                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                          periodFilter === period
-                            ? 'bg-white text-indigo-600 shadow-sm'
-                            : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                      >
-                        {periodLabels[period]}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Filtro de Categoria */}
-                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                    <SelectTrigger className="w-[180px] bg-white">
-                      <SelectValue placeholder="Todas categorias" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas categorias</SelectItem>
-                      {categories.map((cat: any) => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          <span className="flex items-center gap-2">
-                            <span>{cat.icon || '📁'}</span>
-                            <span>{cat.name}</span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <p className="text-sm text-gray-500">
+                    {showAllTime ? 'Histórico completo' : `${monthNames[selectedMonth - 1]} ${selectedYear}`}
+                  </p>
                 </div>
               </div>
 
@@ -965,14 +997,7 @@ export default function DashboardContent({
       }
     }).filter((cat: any) => cat.total > 0)
 
-    const periodLabels: Record<PeriodFilter, string> = {
-      '7d': 'Últimos 7 dias',
-      '1m': 'Último mês',
-      '3m': 'Últimos 3 meses',
-      '6m': 'Últimos 6 meses',
-      '1y': 'Último ano',
-      'all': 'Todo período',
-    }
+    const isCurrentMonthSelected = selectedMonth === currentMonth && selectedYear === currentYear
 
     return (
       <>
@@ -1145,47 +1170,74 @@ export default function DashboardContent({
               {/* Filtros */}
               <Card className="bg-white shadow-sm border-0 p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Filtros</h3>
-                <div className="flex flex-wrap gap-4">
-                  {/* Período */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Período</label>
-                    <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
-                      {(['7d', '1m', '3m', '6m', '1y', 'all'] as PeriodFilter[]).map((period) => (
-                        <button
-                          key={period}
-                          onClick={() => setPeriodFilter(period)}
-                          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                            periodFilter === period
-                              ? 'bg-white text-indigo-600 shadow-sm'
-                              : 'text-gray-600 hover:text-gray-900'
-                          }`}
-                        >
-                          {periodLabels[period]}
-                        </button>
-                      ))}
+                <div className="flex flex-wrap items-center gap-4">
+                  {/* Navegação de Mês */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={goToPreviousMonth}
+                      className="h-9 w-9"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+
+                    <div className="flex items-center gap-2 min-w-[180px] justify-center">
+                      <Calendar className="h-4 w-4 text-indigo-600" />
+                      <span className="font-semibold text-gray-900">
+                        {monthNames[selectedMonth - 1]} {selectedYear}
+                      </span>
                     </div>
+
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={goToNextMonth}
+                      className="h-9 w-9"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
                   </div>
 
+                  {/* Botão Mês Atual */}
+                  {!isCurrentMonthSelected && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={goToCurrentMonth}
+                      className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+                    >
+                      Mês Atual
+                    </Button>
+                  )}
+
+                  {/* Botão Ver Tudo */}
+                  <Button
+                    variant={showAllTime ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setShowAllTime(!showAllTime)}
+                    className={showAllTime ? 'bg-indigo-600 hover:bg-indigo-700' : ''}
+                  >
+                    {showAllTime ? 'Mostrando Tudo' : 'Ver Tudo'}
+                  </Button>
+
                   {/* Categoria */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Categoria</label>
-                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Todas categorias" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todas categorias</SelectItem>
-                        {categories.map((cat: any) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            <span className="flex items-center gap-2">
-                              <span>{cat.icon || '📁'}</span>
-                              <span>{cat.name}</span>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Todas categorias" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas categorias</SelectItem>
+                      {categories.map((cat: any) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          <span className="flex items-center gap-2">
+                            <span>{cat.icon || '📁'}</span>
+                            <span>{cat.name}</span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </Card>
 
