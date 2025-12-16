@@ -6,15 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
@@ -23,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Plus, Trash2, Search, TrendingUp, TrendingDown, Loader2, Tag, ArrowUpDown } from 'lucide-react'
+import { Plus, Trash2, Search, TrendingUp, TrendingDown, Loader2, Tag } from 'lucide-react'
 import Toast from './Toast'
 
 interface Category {
@@ -55,7 +46,6 @@ export default function CategoryCrud({ categories }: CategoryCrudProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [searchFilter, setSearchFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState<'all' | 'expense' | 'income'>('all')
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
 
   const incomeCategories = categories.filter(c => c.type === 'INCOME')
   const expenseCategories = categories.filter(c => c.type === 'EXPENSE')
@@ -105,22 +95,6 @@ export default function CategoryCrud({ categories }: CategoryCrudProps) {
         setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
       }
       setDeletingId(null)
-    }
-  }
-
-  const toggleSelectAll = () => {
-    if (selectedIds.length === filteredCategories.length) {
-      setSelectedIds([])
-    } else {
-      setSelectedIds(filteredCategories.map(c => c.id))
-    }
-  }
-
-  const toggleSelect = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(i => i !== id))
-    } else {
-      setSelectedIds([...selectedIds, id])
     }
   }
 
@@ -323,102 +297,83 @@ export default function CategoryCrud({ categories }: CategoryCrudProps) {
           </TabsList>
         </Tabs>
 
-        {/* Table */}
-        <div className="bg-white rounded-lg border border-gray-200">
-          {filteredCategories.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-purple-100 mb-4">
-                <Tag className="w-8 h-8 text-purple-500" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhuma categoria encontrada</h3>
-              <p className="text-gray-500">
-                {searchFilter ? 'Tente outro termo de busca' : 'Clique em "Criar Categoria" para adicionar'}
-              </p>
+        {/* Cards Grid */}
+        {filteredCategories.length === 0 ? (
+          <div className="bg-white rounded-lg border border-gray-200 text-center py-12">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-purple-100 mb-4">
+              <Tag className="w-8 h-8 text-purple-500" />
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={selectedIds.length === filteredCategories.length}
-                      onCheckedChange={toggleSelectAll}
-                    />
-                  </TableHead>
-                  <TableHead className="w-16">Icone</TableHead>
-                  <TableHead>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2 -ml-2 font-medium hover:bg-transparent"
-                    >
-                      Nome
-                      <ArrowUpDown className="ml-1 h-3 w-3" />
-                    </Button>
-                  </TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead className="w-24">Cor</TableHead>
-                  <TableHead className="w-12"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCategories.map((cat) => (
-                  <TableRow key={cat.id} className={deletingId === cat.id ? 'opacity-50' : ''}>
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedIds.includes(cat.id)}
-                        onCheckedChange={() => toggleSelect(cat.id)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-2xl">{cat.icon || '📁'}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-medium text-purple-600 hover:text-purple-700 cursor-pointer">
-                        {cat.name}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={`text-xs ${
-                          cat.type === 'INCOME'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-orange-100 text-orange-700'
-                        }`}
-                      >
-                        {cat.type === 'INCOME' ? 'Receita' : 'Despesa'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-6 h-6 rounded-full shadow-sm border border-gray-200"
-                          style={{ backgroundColor: cat.color }}
-                        />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(cat.id, cat.name)}
-                        disabled={deletingId === cat.id}
-                        className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
-                      >
-                        {deletingId === cat.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhuma categoria encontrada</h3>
+            <p className="text-gray-500">
+              {searchFilter ? 'Tente outro termo de busca' : 'Clique em "Criar Categoria" para adicionar'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {filteredCategories.map((cat) => (
+              <div
+                key={cat.id}
+                className={`group relative bg-white rounded-xl border-2 border-gray-100 p-4 hover:border-gray-200 hover:shadow-md transition-all cursor-pointer ${
+                  deletingId === cat.id ? 'opacity-50' : ''
+                }`}
+                style={{
+                  borderLeftColor: cat.color,
+                  borderLeftWidth: '4px',
+                }}
+              >
+                {/* Delete button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDelete(cat.id, cat.name)
+                  }}
+                  disabled={deletingId === cat.id}
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-gray-100 text-gray-400 hover:bg-red-100 hover:text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  {deletingId === cat.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+
+                {/* Icon */}
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-3"
+                  style={{ backgroundColor: `${cat.color}15` }}
+                >
+                  {cat.icon || '📁'}
+                </div>
+
+                {/* Name */}
+                <h3 className="font-semibold text-gray-900 truncate mb-1">
+                  {cat.name}
+                </h3>
+
+                {/* Type badge */}
+                <span
+                  className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${
+                    cat.type === 'INCOME'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-orange-100 text-orange-700'
+                  }`}
+                >
+                  {cat.type === 'INCOME' ? (
+                    <>
+                      <TrendingUp className="w-3 h-3 mr-1" />
+                      Receita
+                    </>
+                  ) : (
+                    <>
+                      <TrendingDown className="w-3 h-3 mr-1" />
+                      Despesa
+                    </>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   )

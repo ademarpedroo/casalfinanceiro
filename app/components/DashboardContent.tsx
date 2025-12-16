@@ -519,8 +519,8 @@ export default function DashboardContent({
             {/* Orçamento vs Gastos */}
             <Card className="bg-white shadow-sm border-0 p-6">
               <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-900">Orçamento vs Gastos</h3>
-                <p className="text-sm text-gray-500">Acompanhamento por categoria</p>
+                <h3 className="text-lg font-semibold text-gray-900">Orcamento vs Gastos</h3>
+                <p className="text-sm text-gray-500">Quanto voce planejou gastar vs quanto gastou</p>
               </div>
               <div className="h-64">
                 {hasBudgetData ? (
@@ -556,12 +556,15 @@ export default function DashboardContent({
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400 px-4">
                     <svg className="w-12 h-12 mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                     </svg>
-                    <p className="font-medium text-sm">Sem orçamentos definidos</p>
-                    <p className="text-xs">Configure orçamentos em Orçamento</p>
+                    <p className="font-medium text-sm text-center">Defina limites de gastos</p>
+                    <p className="text-xs text-center mt-1">Va em Orcamento e defina quanto quer gastar por categoria. Ex: Alimentacao R$ 800/mes</p>
+                    <a href="#orcamento" className="mt-3 text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+                      Configurar Orcamento →
+                    </a>
                   </div>
                 )}
               </div>
