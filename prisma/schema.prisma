@@ -3,30 +3,26 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// NextAuth.js Models
 model User {
-  id            String    @id @default(uuid())
+  id            String       @id @default(uuid())
   name          String?
-  email         String    @unique
+  email         String       @unique
   emailVerified DateTime?
   image         String?
-  password      String?   // For credentials provider
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
+  password      String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
   accounts      Account[]
-  sessions      Session[]
-
-  // User data
-  incomes       Income[]
-  expenses      Expense[]
-  cards         CreditCard[]
-  categories    Category[]
   budgets       Budget[]
+  categories    Category[]
+  cards         CreditCard[]
+  expenses      Expense[]
+  incomes       Income[]
+  sessions      Session[]
 }
 
 model Account {
@@ -42,8 +38,7 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -67,29 +62,29 @@ model VerificationToken {
 model Category {
   id        String    @id @default(uuid())
   userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
-  type      String    // "INCOME" or "EXPENSE"
-  color     String    @default("#3b82f6") // blue-500
+  type      String
+  color     String    @default("#3b82f6")
   icon      String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  incomes   Income[]
-  expenses  Expense[]
   budgets   Budget[]
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses  Expense[]
+  incomes   Income[]
 }
 
 model Budget {
   id         String   @id @default(uuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   categoryId String
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  month      Int      // 1-12
+  month      Int
   year       Int
   limit      Float
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([categoryId, month, year])
 }
@@ -97,69 +92,69 @@ model Budget {
 model Income {
   id          String    @id @default(uuid())
   userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   description String
   amount      Float
   date        DateTime
   categoryId  String?
-  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   received    Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  category    Category? @relation(fields: [categoryId], references: [id])
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Expense {
   id          String    @id @default(uuid())
   userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   description String
   amount      Float
   dueDate     DateTime
   paidAt      DateTime?
   categoryId  String?
-  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   isFixed     Boolean   @default(false)
   isPaid      Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  category    Category? @relation(fields: [categoryId], references: [id])
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model CreditCard {
   id             String            @id @default(uuid())
   userId         String
-  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   name           String
   limit          Float
   closingDay     Int
   dueDay         Int
-  color          String            @default("nubank") // nubank, inter, c6blue, black, platinum, gold, red, graphite
-  brand          String            @default("mastercard") // visa, mastercard, elo, amex
-  lastFourDigits String?           // 4 últimos dígitos do cartão
+  color          String            @default("nubank")
+  brand          String            @default("mastercard")
+  lastFourDigits String?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   transactions   CardTransaction[]
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model CardTransaction {
-  id               String        @id @default(uuid())
-  cardId           String
-  card             CreditCard    @relation(fields: [cardId], references: [id])
-  description      String
-  totalAmount      Float
-  purchaseDate     DateTime
-  installmentsCount Int          @default(1)
-  installments     Installment[]
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id                String        @id @default(uuid())
+  cardId            String
+  description       String
+  totalAmount       Float
+  purchaseDate      DateTime
+  installmentsCount Int           @default(1)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  card              CreditCard    @relation(fields: [cardId], references: [id])
+  installments      Installment[]
 }
 
 model Installment {
   id            String          @id @default(uuid())
   transactionId String
-  transaction   CardTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   number        Int
   amount        Float
   dueDate       DateTime
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
+  transaction   CardTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
 }
