@@ -150,6 +150,7 @@ export default function DashboardContent({
       isPaid: exp.isPaid || false,
       isCard: false,
       category: exp.category,
+      categoryId: exp.categoryId || exp.category?.id,
     }))
 
     // Parcelas de cartao
@@ -163,6 +164,8 @@ export default function DashboardContent({
         isCard: true,
         cardName: t.card.name,
         cardColor: t.card.color,
+        categoryId: t.categoryId || t.category?.id,
+        category: t.category,
       }))
     )
 

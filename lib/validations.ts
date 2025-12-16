@@ -73,6 +73,13 @@ export function parseFormData<T>(
       if (value === 'on') {
         rawData[key] = true
       }
+      // Handle boolean strings (true/false)
+      else if (value === 'true') {
+        rawData[key] = true
+      }
+      else if (value === 'false') {
+        rawData[key] = false
+      }
       // Handle empty strings as undefined
       else if (value === '' || value === null) {
         rawData[key] = undefined

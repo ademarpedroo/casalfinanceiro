@@ -1,11 +1,37 @@
 'use client'
 
-import { useState } from 'react'
-import { deleteExpense, markExpenseAsPaid } from '@/app/actions/expenses'
+import { useState, useTransition } from 'react'
+import { deleteExpense, markExpenseAsPaid, updateExpense } from '@/app/actions/expenses'
 import { markInstallmentAsPaid, markInstallmentAsUnpaid, deleteTransaction } from '@/app/actions/cards'
-import { Trash2, TrendingDown, Calendar, Check, CreditCard, Clock, Loader2 } from 'lucide-react'
+import { Trash2, TrendingDown, Calendar, Check, CreditCard, Clock, Loader2, Pencil, Save } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
+import { DatePicker } from '@/components/ui/date-picker'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import Toast from './Toast'
 import ConfirmModal from './ConfirmModal'
+
+interface Category {
+  id: string
+  name: string
+  color: string
+  icon: string | null
+  type: string
+}
 
 interface Expense {
   id: string
@@ -14,7 +40,9 @@ interface Expense {
   dueDate: Date
   isPaid?: boolean
   isFixed?: boolean
+  categoryId?: string | null
   category?: {
+    id: string
     name: string
     color: string
     icon: string | null
@@ -95,6 +123,7 @@ interface UnifiedExpense {
 interface ExpenseTableProps {
   expenses: Expense[]
   transactions?: Transaction[]
+  categories?: Category[]
   searchFilter?: string
   statusFilter?: 'all' | 'pending' | 'paid'
   periodFilter?: 'all' | 'month'
@@ -105,15 +134,27 @@ interface ExpenseTableProps {
 export default function ExpenseTable({
   expenses,
   transactions = [],
+  categories = [],
   searchFilter = '',
   statusFilter = 'all',
   periodFilter = 'month',
   selectedMonth,
   selectedYear,
 }: ExpenseTableProps) {
+  const [isPending, startTransition] = useTransition()
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [deleteModal, setDeleteModal] = useState<UnifiedExpense | null>(null)
+
+  // Edit states
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
+  const [editDescription, setEditDescription] = useState('')
+  const [editAmount, setEditAmount] = useState('')
+  const [editDueDate, setEditDueDate] = useState<Date | undefined>(undefined)
+  const [editCategory, setEditCategory] = useState('')
+  const [editIsFixed, setEditIsFixed] = useState(false)
+
+  const expenseCategories = categories.filter(c => c.type === 'EXPENSE')
 
   // Get installments from transactions (filtered by period if needed)
   const cardInstallments: UnifiedExpense[] = transactions.flatMap(t =>
@@ -170,6 +211,43 @@ export default function ExpenseTable({
   const sortedExpenses = [...allExpenses].sort((a, b) =>
     new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
   )
+
+  // Find the original expense for editing (only for regular expenses, not card installments)
+  function openEditModal(exp: UnifiedExpense) {
+    if (exp.isCardExpense) return // Don't allow editing card installments here
+    const originalExpense = expenses.find(e => e.id === exp.id)
+    if (!originalExpense) return
+
+    setEditingExpense(originalExpense)
+    setEditDescription(originalExpense.description)
+    setEditAmount(originalExpense.amount.toString())
+    setEditDueDate(new Date(originalExpense.dueDate))
+    setEditCategory(originalExpense.categoryId || '')
+    setEditIsFixed(originalExpense.isFixed || false)
+  }
+
+  async function handleEditSave() {
+    if (!editingExpense || !editDueDate) return
+
+    startTransition(async () => {
+      const formData = new FormData()
+      formData.set('description', editDescription)
+      formData.set('amount', editAmount)
+      formData.set('dueDate', editDueDate.toISOString())
+      formData.set('isFixed', editIsFixed ? 'true' : 'false')
+      if (editCategory && editCategory !== '_none') {
+        formData.set('categoryId', editCategory)
+      }
+
+      const result = await updateExpense(editingExpense.id, formData)
+      if (result?.success) {
+        setToast({ message: result.message!, type: 'success' })
+        setEditingExpense(null)
+      } else {
+        setToast({ message: result?.error || 'Erro ao atualizar', type: 'error' })
+      }
+    })
+  }
 
   async function handleMarkPaid(exp: UnifiedExpense) {
     setLoadingId(exp.id)
@@ -256,6 +334,129 @@ export default function ExpenseTable({
         }
         isLoading={!!loadingId}
       />
+
+      {/* Edit Modal */}
+      <Dialog open={!!editingExpense} onOpenChange={(open) => !open && setEditingExpense(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-orange-500" />
+              Editar Despesa
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            {/* Descricao */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-expense-description">Descricao</Label>
+              <Input
+                id="edit-expense-description"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Ex: Conta de luz, Mercado..."
+                disabled={isPending}
+                className="h-11"
+              />
+            </div>
+
+            {/* Valor e Categoria */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-expense-amount">Valor (R$)</Label>
+                <Input
+                  id="edit-expense-amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  placeholder="0,00"
+                  disabled={isPending}
+                  className="h-11 font-semibold"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Categoria</Label>
+                <Select value={editCategory} onValueChange={setEditCategory}>
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Selecione (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">Sem categoria</SelectItem>
+                    {expenseCategories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{cat.icon || '📁'}</span>
+                          <span>{cat.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Data */}
+            <div className="space-y-2">
+              <Label>Data de Vencimento</Label>
+              <DatePicker
+                date={editDueDate}
+                onDateChange={setEditDueDate}
+                placeholder="Selecione a data"
+              />
+            </div>
+
+            {/* Conta Fixa */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              <Checkbox
+                id="edit-isFixed"
+                checked={editIsFixed}
+                onCheckedChange={(checked) => setEditIsFixed(checked as boolean)}
+                disabled={isPending}
+                className="data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-500"
+              />
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-gray-500" />
+                <Label htmlFor="edit-isFixed" className="text-sm font-medium cursor-pointer text-gray-700">
+                  Conta fixa mensal
+                </Label>
+              </div>
+            </div>
+
+            {/* Botoes */}
+            <div className="flex gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditingExpense(null)}
+                disabled={isPending}
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleEditSave}
+                disabled={isPending || !editDescription || !editAmount || !editDueDate}
+                className="flex-1 bg-orange-500 hover:bg-orange-600"
+              >
+                {isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Salvar Alteracoes
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="divide-y divide-gray-100">
         {sortedExpenses.map((exp) => (
@@ -352,6 +553,18 @@ export default function ExpenseTable({
               </span>
 
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                {/* Edit button (only for regular expenses, not card installments) */}
+                {!exp.isCardExpense && (
+                  <button
+                    onClick={() => openEditModal(exp)}
+                    disabled={loadingId === exp.id}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-all"
+                    title="Editar despesa"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
+
                 {/* Mark as paid button */}
                 <button
                   onClick={() => handleMarkPaid(exp)}

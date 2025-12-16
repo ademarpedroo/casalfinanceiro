@@ -206,6 +206,7 @@ export default function ExpenseCrud({ expenses, categories, cards = [], transact
       <ExpenseTable
         expenses={filteredExpenses}
         transactions={transactions}
+        categories={categories}
         searchFilter={searchFilter}
         statusFilter={statusFilter}
         periodFilter={periodFilter}
