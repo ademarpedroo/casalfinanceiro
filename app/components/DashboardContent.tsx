@@ -13,6 +13,13 @@ import FloatingActionButton from './FloatingActionButton'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   AreaChart,
   Area,
   BarChart,
@@ -37,12 +44,6 @@ interface User {
 
 interface DashboardContentProps {
   user: User
-  kpis: {
-    totalIncome: number
-    totalExpenses: number
-    balance: number
-    budgetUsage: number
-  }
   incomes: any[]
   expenses: any[]
   cards: any[]
@@ -76,7 +77,6 @@ type PeriodFilter = '7d' | '1m' | '3m' | '6m' | '1y' | 'all'
 
 export default function DashboardContent({
   user,
-  kpis,
   incomes,
   expenses,
   cards,
@@ -89,8 +89,10 @@ export default function DashboardContent({
   currentYear,
 }: DashboardContentProps) {
   const [activeSection, setActiveSection] = useState('dashboard')
-  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('6m')
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('1m')
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [isLoading, setIsLoading] = useState(false)
+  const [reportView, setReportView] = useState<'planilha' | 'analise'>('planilha')
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -175,13 +177,41 @@ export default function DashboardContent({
   // Filtrar dados por período
   const filteredIncomes = useMemo(() => {
     const filterDate = getFilterDate(periodFilter)
-    return incomes.filter((i: any) => new Date(i.date) >= filterDate)
-  }, [incomes, periodFilter])
+    return incomes.filter((i: any) => {
+      const dateMatch = new Date(i.date) >= filterDate
+      const categoryMatch = categoryFilter === 'all' || i.categoryId === categoryFilter
+      return dateMatch && categoryMatch
+    })
+  }, [incomes, periodFilter, categoryFilter])
 
   const filteredExpenses = useMemo(() => {
     const filterDate = getFilterDate(periodFilter)
-    return allExpensesWithCards.filter(e => new Date(e.dueDate) >= filterDate)
-  }, [allExpensesWithCards, periodFilter])
+    return allExpensesWithCards.filter(e => {
+      const dateMatch = new Date(e.dueDate) >= filterDate
+      const categoryMatch = categoryFilter === 'all' || e.categoryId === categoryFilter
+      return dateMatch && categoryMatch
+    })
+  }, [allExpensesWithCards, periodFilter, categoryFilter])
+
+  // KPIs calculados dinamicamente baseado nos dados filtrados
+  const filteredKPIs = useMemo(() => {
+    const totalIncome = filteredIncomes.reduce((sum: number, inc: any) => sum + inc.amount, 0)
+    const totalExpenses = filteredExpenses.reduce((sum: number, exp: any) => sum + exp.amount, 0)
+    const balance = totalIncome - totalExpenses
+
+    // Calcular uso do orcamento baseado nas despesas filtradas
+    const budgetUsage = budgets.length > 0
+      ? budgets.reduce((sum: number, b: any) => {
+          const spent = filteredExpenses
+            .filter((e: any) => e.categoryId === b.categoryId)
+            .reduce((s: number, e: any) => s + e.amount, 0)
+          const percentage = b.limit > 0 ? (spent / b.limit) * 100 : 0
+          return sum + Math.min(percentage, 100)
+        }, 0) / budgets.length
+      : 0
+
+    return { totalIncome, totalExpenses, balance, budgetUsage }
+  }, [filteredIncomes, filteredExpenses, budgets])
 
   // Gerar dados do gráfico de área baseado nos dados reais (passado + futuro)
   const areaChartData = useMemo(() => {
@@ -330,16 +360,21 @@ export default function DashboardContent({
     const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e']
 
     // Dados para o gráfico de barras (orçamento vs gasto) - dados reais
+    // Calcula gastos por categoria baseado nas despesas FILTRADAS
     const budgetChartData = budgets
-      .map(b => {
-        const cat = categories.find(c => c.id === b.categoryId)
+      .map((b: any) => {
+        const cat = categories.find((c: any) => c.id === b.categoryId)
+        // Calcula gasto baseado nas despesas filtradas
+        const gasto = filteredExpenses
+          .filter((e: any) => e.categoryId === b.categoryId)
+          .reduce((sum: number, e: any) => sum + e.amount, 0)
         return {
           categoria: cat?.name?.substring(0, 10) || 'Sem nome',
           limite: b.limit,
-          gasto: b.spent || 0,
+          gasto,
         }
       })
-      .filter(b => b.limite > 0 || b.gasto > 0)
+      .filter((b: any) => b.limite > 0 || b.gasto > 0)
       .slice(0, 5)
 
     const hasBudgetData = budgetChartData.length > 0
@@ -357,7 +392,7 @@ export default function DashboardContent({
       <>
         <div className="space-y-6">
           {/* KPI Cards */}
-          <KPICards {...kpis} />
+          <KPICards {...filteredKPIs} />
 
           {/* Gráfico Principal - Fluxo de Caixa */}
           <Card className="bg-white shadow-sm border-0 overflow-hidden">
@@ -369,20 +404,40 @@ export default function DashboardContent({
                 </div>
 
                 {/* Filtros de Período */}
-                <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
-                  {(['7d', '1m', '3m', '6m', '1y', 'all'] as PeriodFilter[]).map((period) => (
-                    <button
-                      key={period}
-                      onClick={() => setPeriodFilter(period)}
-                      className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                        periodFilter === period
-                          ? 'bg-white text-indigo-600 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      {periodLabels[period]}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+                    {(['7d', '1m', '3m', '6m', '1y', 'all'] as PeriodFilter[]).map((period) => (
+                      <button
+                        key={period}
+                        onClick={() => setPeriodFilter(period)}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                          periodFilter === period
+                            ? 'bg-white text-indigo-600 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        {periodLabels[period]}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Filtro de Categoria */}
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="w-[180px] bg-white">
+                      <SelectValue placeholder="Todas categorias" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas categorias</SelectItem>
+                      {categories.map((cat: any) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          <span className="flex items-center gap-2">
+                            <span>{cat.icon || '📁'}</span>
+                            <span>{cat.name}</span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -695,17 +750,17 @@ export default function DashboardContent({
             <Card className="bg-white shadow-sm border-0 p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Ultimas Receitas</h3>
-                  <p className="text-sm text-gray-500">{incomes.length} registros</p>
+                  <h3 className="text-lg font-semibold text-gray-900">Receitas do Periodo</h3>
+                  <p className="text-sm text-gray-500">{filteredIncomes.length} registros</p>
                 </div>
                 <Button variant="ghost" size="sm" asChild className="text-indigo-600 hover:text-indigo-700">
                   <a href="#receitas">Ver todas</a>
                 </Button>
               </div>
-              <IncomeList incomes={incomes.slice(0, 5)} />
-              {incomes.length === 0 && (
+              <IncomeList incomes={filteredIncomes.slice(0, 5)} />
+              {filteredIncomes.length === 0 && (
                 <div className="text-center py-8 text-gray-400">
-                  <p>Nenhuma receita cadastrada</p>
+                  <p>Nenhuma receita no periodo</p>
                 </div>
               )}
             </Card>
@@ -713,17 +768,17 @@ export default function DashboardContent({
             <Card className="bg-white shadow-sm border-0 p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Ultimas Despesas</h3>
-                  <p className="text-sm text-gray-500">{expenses.length} registros</p>
+                  <h3 className="text-lg font-semibold text-gray-900">Despesas do Periodo</h3>
+                  <p className="text-sm text-gray-500">{filteredExpenses.length} registros</p>
                 </div>
                 <Button variant="ghost" size="sm" asChild className="text-indigo-600 hover:text-indigo-700">
                   <a href="#despesas">Ver todas</a>
                 </Button>
               </div>
-              <ExpenseList expenses={expenses.slice(0, 5)} />
-              {expenses.length === 0 && (
+              <ExpenseList expenses={filteredExpenses.slice(0, 5)} />
+              {filteredExpenses.length === 0 && (
                 <div className="text-center py-8 text-gray-400">
-                  <p>Nenhuma despesa cadastrada</p>
+                  <p>Nenhuma despesa no periodo</p>
                 </div>
               )}
             </Card>
@@ -785,6 +840,441 @@ export default function DashboardContent({
     return (
       <>
         <CategoryCrud categories={categories} />
+        <FloatingActionButton categories={categories} />
+      </>
+    )
+  }
+
+  // Seção de Relatórios
+  if (activeSection === 'relatorios') {
+    // Gerar próximos 6 meses a partir do mês atual
+    const months: { month: number; year: number; label: string }[] = []
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(currentYear, currentMonth - 1 + i, 1)
+      months.push({
+        month: d.getMonth() + 1,
+        year: d.getFullYear(),
+        label: `${monthNames[d.getMonth()]}/${d.getFullYear()}`
+      })
+    }
+
+    // Agrupar despesas fixas e parceladas por descrição/cartão
+    const expenseRows: {
+      id: string
+      description: string
+      source: string
+      dueDay: number
+      isFixed: boolean
+      isCard: boolean
+      values: { [key: string]: { amount: number; isPaid: boolean } }
+    }[] = []
+
+    // Despesas normais (fixas)
+    expenses.forEach((exp: any) => {
+      const key = `exp-${exp.id}`
+      const monthKey = `${new Date(exp.dueDate).getMonth() + 1}-${new Date(exp.dueDate).getFullYear()}`
+
+      // Verificar se já existe uma linha com mesma descrição
+      let row = expenseRows.find(r => r.description === exp.description && r.isFixed && !r.isCard)
+      if (!row) {
+        row = {
+          id: key,
+          description: exp.description,
+          source: exp.category?.name || 'Geral',
+          dueDay: new Date(exp.dueDate).getDate(),
+          isFixed: exp.isFixed || false,
+          isCard: false,
+          values: {}
+        }
+        expenseRows.push(row)
+      }
+
+      months.forEach(m => {
+        const mKey = `${m.month}-${m.year}`
+        const expDate = new Date(exp.dueDate)
+        if (expDate.getMonth() + 1 === m.month && expDate.getFullYear() === m.year) {
+          row!.values[mKey] = { amount: exp.amount, isPaid: exp.isPaid || false }
+        } else if (exp.isFixed && !row!.values[mKey]) {
+          // Despesa fixa: replica para todos os meses
+          row!.values[mKey] = { amount: exp.amount, isPaid: false }
+        }
+      })
+    })
+
+    // Transações de cartão (parcelas)
+    transactions.forEach((t: any) => {
+      t.installments.forEach((inst: any) => {
+        const instDate = new Date(inst.dueDate)
+        const monthKey = `${instDate.getMonth() + 1}-${instDate.getFullYear()}`
+
+        // Verificar se já existe uma linha para esta transação
+        let row = expenseRows.find(r => r.id === `card-${t.id}`)
+        if (!row) {
+          row = {
+            id: `card-${t.id}`,
+            description: t.description,
+            source: t.card.name,
+            dueDay: t.card.dueDay,
+            isFixed: false,
+            isCard: true,
+            values: {}
+          }
+          expenseRows.push(row)
+        }
+
+        row.values[monthKey] = { amount: inst.amount, isPaid: inst.isPaid || false }
+      })
+    })
+
+    // Calcular totais por mês
+    const monthTotals: { [key: string]: { receita: number; despesa: number } } = {}
+    months.forEach(m => {
+      const mKey = `${m.month}-${m.year}`
+      monthTotals[mKey] = { receita: 0, despesa: 0 }
+
+      // Somar receitas do mês
+      incomes.forEach((inc: any) => {
+        const incDate = new Date(inc.date)
+        if (incDate.getMonth() + 1 === m.month && incDate.getFullYear() === m.year) {
+          monthTotals[mKey].receita += inc.amount
+        }
+      })
+
+      // Somar despesas do mês
+      expenseRows.forEach(row => {
+        if (row.values[mKey]) {
+          monthTotals[mKey].despesa += row.values[mKey].amount
+        }
+      })
+    })
+
+    // Dados para visão de análise
+    const categoryTotals = categories.map((cat: any) => {
+      const incomeTotal = filteredIncomes
+        .filter((i: any) => i.categoryId === cat.id)
+        .reduce((sum: number, i: any) => sum + i.amount, 0)
+      const expenseTotal = filteredExpenses
+        .filter((e: any) => e.categoryId === cat.id)
+        .reduce((sum: number, e: any) => sum + e.amount, 0)
+      return {
+        ...cat,
+        incomeTotal,
+        expenseTotal,
+        total: cat.type === 'INCOME' ? incomeTotal : expenseTotal
+      }
+    }).filter((cat: any) => cat.total > 0)
+
+    const periodLabels: Record<PeriodFilter, string> = {
+      '7d': 'Últimos 7 dias',
+      '1m': 'Último mês',
+      '3m': 'Últimos 3 meses',
+      '6m': 'Últimos 6 meses',
+      '1y': 'Último ano',
+      'all': 'Todo período',
+    }
+
+    return (
+      <>
+        <div className="space-y-6">
+          {/* Header com Tabs */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Relatórios</h2>
+              <p className="text-gray-500">Controle completo das suas finanças</p>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+              <button
+                onClick={() => setReportView('planilha')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                  reportView === 'planilha'
+                    ? 'bg-white text-indigo-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Planilha Mensal
+              </button>
+              <button
+                onClick={() => setReportView('analise')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                  reportView === 'analise'
+                    ? 'bg-white text-indigo-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Análise por Período
+              </button>
+            </div>
+          </div>
+
+          {/* VISÃO: Planilha Mensal */}
+          {reportView === 'planilha' && (
+            <>
+              {/* Tabela Estilo Planilha */}
+              <Card className="bg-white shadow-sm border-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="text-left p-3 font-semibold text-gray-700 sticky left-0 bg-gray-100 min-w-[200px]">Descrição</th>
+                    <th className="text-left p-3 font-semibold text-gray-700 min-w-[100px]">Conta/Cartão</th>
+                    <th className="text-center p-3 font-semibold text-gray-700 min-w-[50px]">Dia</th>
+                    {months.map(m => (
+                      <th key={`${m.month}-${m.year}`} className="text-right p-3 font-semibold text-gray-700 min-w-[110px]">
+                        {m.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenseRows.map((row, idx) => (
+                    <tr key={row.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="p-3 font-medium text-gray-900 sticky left-0 bg-inherit">
+                        <div className="flex items-center gap-2">
+                          {row.isCard && <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">Cartão</span>}
+                          {row.isFixed && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Fixo</span>}
+                          {row.description}
+                        </div>
+                      </td>
+                      <td className="p-3 text-gray-600">{row.source}</td>
+                      <td className="p-3 text-center text-gray-600">{row.dueDay}</td>
+                      {months.map(m => {
+                        const mKey = `${m.month}-${m.year}`
+                        const value = row.values[mKey]
+                        return (
+                          <td
+                            key={mKey}
+                            className={`p-3 text-right font-medium ${
+                              value
+                                ? value.isPaid
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-rose-100 text-rose-700'
+                                : 'text-gray-300'
+                            }`}
+                          >
+                            {value ? formatCurrency(value.amount) : '-'}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+
+                  {expenseRows.length === 0 && (
+                    <tr>
+                      <td colSpan={3 + months.length} className="p-8 text-center text-gray-400">
+                        Nenhuma despesa cadastrada
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+
+                {/* Totais */}
+                <tfoot className="border-t-2 border-gray-300">
+                  {/* Receita Total */}
+                  <tr className="bg-emerald-50">
+                    <td colSpan={3} className="p-3 font-bold text-emerald-700 sticky left-0 bg-emerald-50">
+                      RECEITA
+                    </td>
+                    {months.map(m => {
+                      const mKey = `${m.month}-${m.year}`
+                      return (
+                        <td key={mKey} className="p-3 text-right font-bold text-emerald-700">
+                          {formatCurrency(monthTotals[mKey]?.receita || 0)}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  {/* Despesa Total */}
+                  <tr className="bg-rose-50">
+                    <td colSpan={3} className="p-3 font-bold text-rose-700 sticky left-0 bg-rose-50">
+                      DESPESA
+                    </td>
+                    {months.map(m => {
+                      const mKey = `${m.month}-${m.year}`
+                      return (
+                        <td key={mKey} className="p-3 text-right font-bold text-rose-700">
+                          {formatCurrency(monthTotals[mKey]?.despesa || 0)}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  {/* Sobra/Saldo */}
+                  <tr className="bg-gray-100">
+                    <td colSpan={3} className="p-3 font-bold text-gray-900 sticky left-0 bg-gray-100">
+                      SOBRA
+                    </td>
+                    {months.map(m => {
+                      const mKey = `${m.month}-${m.year}`
+                      const sobra = (monthTotals[mKey]?.receita || 0) - (monthTotals[mKey]?.despesa || 0)
+                      return (
+                        <td
+                          key={mKey}
+                          className={`p-3 text-right font-bold ${
+                            sobra >= 0 ? 'text-emerald-700 bg-emerald-100' : 'text-rose-700 bg-rose-100'
+                          }`}
+                        >
+                          {formatCurrency(sobra)}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Card>
+
+              {/* Legenda */}
+              <div className="flex items-center gap-6 text-sm text-gray-600">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-emerald-100 border border-emerald-300"></div>
+                  <span>Pago</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-rose-100 border border-rose-300"></div>
+                  <span>Pendente</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* VISÃO: Análise por Período */}
+          {reportView === 'analise' && (
+            <>
+              {/* Filtros */}
+              <Card className="bg-white shadow-sm border-0 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Filtros</h3>
+                <div className="flex flex-wrap gap-4">
+                  {/* Período */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Período</label>
+                    <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+                      {(['7d', '1m', '3m', '6m', '1y', 'all'] as PeriodFilter[]).map((period) => (
+                        <button
+                          key={period}
+                          onClick={() => setPeriodFilter(period)}
+                          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                            periodFilter === period
+                              ? 'bg-white text-indigo-600 shadow-sm'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          {periodLabels[period]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Categoria */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Categoria</label>
+                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Todas categorias" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas categorias</SelectItem>
+                        {categories.map((cat: any) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            <span className="flex items-center gap-2">
+                              <span>{cat.icon || '📁'}</span>
+                              <span>{cat.name}</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Resumo do Período */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="bg-white shadow-sm border-0 p-6">
+                  <p className="text-sm text-gray-500 mb-1">Total Receitas</p>
+                  <p className="text-2xl font-bold text-emerald-600">{formatCurrency(filteredKPIs.totalIncome)}</p>
+                  <p className="text-xs text-gray-400 mt-1">{filteredIncomes.length} registros</p>
+                </Card>
+                <Card className="bg-white shadow-sm border-0 p-6">
+                  <p className="text-sm text-gray-500 mb-1">Total Despesas</p>
+                  <p className="text-2xl font-bold text-rose-600">{formatCurrency(filteredKPIs.totalExpenses)}</p>
+                  <p className="text-xs text-gray-400 mt-1">{filteredExpenses.length} registros</p>
+                </Card>
+                <Card className="bg-white shadow-sm border-0 p-6">
+                  <p className="text-sm text-gray-500 mb-1">Saldo do Período</p>
+                  <p className={`text-2xl font-bold ${filteredKPIs.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {formatCurrency(filteredKPIs.balance)}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {filteredKPIs.balance >= 0 ? 'Superávit' : 'Déficit'}
+                  </p>
+                </Card>
+              </div>
+
+              {/* Totais por Categoria */}
+              <Card className="bg-white shadow-sm border-0 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Totais por Categoria</h3>
+                {categoryTotals.length > 0 ? (
+                  <div className="space-y-3">
+                    {categoryTotals.map((cat: any) => (
+                      <div key={cat.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
+                            style={{ backgroundColor: `${cat.color}20` }}
+                          >
+                            {cat.icon || '📁'}
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">{cat.name}</p>
+                            <p className="text-xs text-gray-500">{cat.type === 'INCOME' ? 'Receita' : 'Despesa'}</p>
+                          </div>
+                        </div>
+                        <p className={`text-lg font-bold ${cat.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {formatCurrency(cat.total)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-gray-400 py-8">Nenhum dado no período selecionado</p>
+                )}
+              </Card>
+
+              {/* Lista de Transações */}
+              <Card className="bg-white shadow-sm border-0 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Transações do Período</h3>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {[...filteredIncomes.map((i: any) => ({ ...i, type: 'income', date: i.date })),
+                    ...filteredExpenses.map((e: any) => ({ ...e, type: 'expense', date: e.dueDate }))]
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .slice(0, 50)
+                    .map((item: any, index: number) => (
+                      <div key={`${item.type}-${item.id}-${index}`} className="flex items-center justify-between p-3 border-b border-gray-100 last:border-0">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-2 h-2 rounded-full ${item.type === 'income' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          <div>
+                            <p className="font-medium text-gray-900">{item.description}</p>
+                            <p className="text-xs text-gray-500">
+                              {new Date(item.date).toLocaleDateString('pt-BR')}
+                              {item.category && ` • ${item.category.name}`}
+                            </p>
+                          </div>
+                        </div>
+                        <p className={`font-semibold ${item.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {item.type === 'income' ? '+' : '-'}{formatCurrency(item.amount)}
+                        </p>
+                      </div>
+                    ))}
+                  {filteredIncomes.length === 0 && filteredExpenses.length === 0 && (
+                    <p className="text-center text-gray-400 py-8">Nenhuma transação no período</p>
+                  )}
+                </div>
+              </Card>
+            </>
+          )}
+        </div>
         <FloatingActionButton categories={categories} />
       </>
     )

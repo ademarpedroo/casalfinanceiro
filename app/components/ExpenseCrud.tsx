@@ -14,7 +14,9 @@ interface Expense {
   dueDate: Date
   isPaid?: boolean
   isFixed?: boolean
+  categoryId?: string | null
   category?: {
+    id: string
     name: string
     color: string
     icon: string | null

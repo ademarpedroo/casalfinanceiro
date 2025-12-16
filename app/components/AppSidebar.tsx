@@ -10,6 +10,7 @@ import {
   User,
   LogOut,
   Heart,
+  FileText,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -33,6 +34,7 @@ const menuItems = [
   { title: 'Cartões', icon: CreditCard, url: '#cartoes' },
   { title: 'Orçamento', icon: PieChart, url: '#orcamento' },
   { title: 'Categorias', icon: Bookmark, url: '#categorias' },
+  { title: 'Relatórios', icon: FileText, url: '#relatorios' },
 ]
 
 const accountItems = [

@@ -5,7 +5,6 @@ import { getAllExpenses } from '@/app/actions/expenses'
 import { getIncomes } from '@/app/actions/income'
 import { getCategories, seedDefaultCategories, deduplicateCategories } from '@/app/actions/categories'
 import { getBudgetWithSpent, getCategoriesWithoutBudget } from '@/app/actions/budget'
-import { calculateKPIs } from '@/lib/kpi'
 import DashboardContent from '@/app/components/DashboardContent'
 import Navbar from '@/app/components/Navbar'
 import Footer from '@/app/components/Footer'
@@ -73,9 +72,6 @@ export default async function Home() {
     getCategoriesWithoutBudget(currentMonth, currentYear)
   ])
 
-  // Calculate KPIs (including card installments for current month)
-  const kpis = calculateKPIs(incomes, expenses, budgets, transactions, currentMonth, currentYear)
-
   return (
     <>
       <AppSidebar user={session.user} />
@@ -84,7 +80,6 @@ export default async function Home() {
         <main className="flex-1 p-6">
           <DashboardContent
             user={user}
-            kpis={kpis}
             incomes={incomes}
             expenses={expenses}
             cards={cards}
