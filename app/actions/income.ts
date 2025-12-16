@@ -112,3 +112,56 @@ export async function deleteIncome(id: string) {
     return { success: false, error: 'Erro ao excluir receita. Tente novamente.' }
   }
 }
+
+export async function createRecurringIncome(data: FormData) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { success: false, error: 'Voce precisa estar logado' }
+    }
+
+    const result = parseFormData(data, incomeSchema)
+    if (!result.success) {
+      return { success: false, error: result.error }
+    }
+
+    const monthsStr = data.get('months')
+    const months = monthsStr ? parseInt(monthsStr as string, 10) : 12
+
+    if (months < 1 || months > 24) {
+      return { success: false, error: 'Numero de meses invalido' }
+    }
+
+    const startDate = result.data.date
+    const incomesToCreate = []
+
+    for (let i = 0; i < months; i++) {
+      const incomeDate = new Date(startDate)
+      incomeDate.setMonth(incomeDate.getMonth() + i)
+
+      // Ajusta para o ultimo dia do mes se o dia original nao existir
+      // Ex: dia 31 em fevereiro vira dia 28/29
+      const originalDay = startDate.getDate()
+      const lastDayOfMonth = new Date(incomeDate.getFullYear(), incomeDate.getMonth() + 1, 0).getDate()
+      incomeDate.setDate(Math.min(originalDay, lastDayOfMonth))
+
+      incomesToCreate.push({
+        userId: session.user.id,
+        description: result.data.description,
+        amount: result.data.amount,
+        date: incomeDate,
+        categoryId: result.data.categoryId || null
+      })
+    }
+
+    await prisma.income.createMany({
+      data: incomesToCreate
+    })
+
+    revalidatePath('/')
+    return { success: true, message: `${months} receitas criadas com sucesso!` }
+  } catch (error) {
+    console.error('Error creating recurring income:', error)
+    return { success: false, error: 'Erro ao criar receitas recorrentes. Tente novamente.' }
+  }
+}

@@ -1,13 +1,21 @@
 'use client'
 
-import { createIncome } from '@/app/actions/income'
+import { createIncome, createRecurringIncome } from '@/app/actions/income'
 import { useTransition, useState } from 'react'
 import Toast from './Toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { DatePicker } from '@/components/ui/date-picker'
-import { TrendingUp, Loader2 } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { TrendingUp, Loader2, Repeat } from 'lucide-react'
 
 interface Category {
   id: string
@@ -28,6 +36,8 @@ export default function AddIncomeForm({ categories, onSuccess, compact = false }
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [recurringMonths, setRecurringMonths] = useState('12')
   const incomeCategories = categories.filter(c => c.type === 'INCOME')
 
   async function handleSubmit(formData: FormData) {
@@ -39,7 +49,14 @@ export default function AddIncomeForm({ categories, onSuccess, compact = false }
     }
 
     startTransition(async () => {
-      const result = await createIncome(formData)
+      let result
+
+      if (isRecurring) {
+        formData.set('months', recurringMonths)
+        result = await createRecurringIncome(formData)
+      } else {
+        result = await createIncome(formData)
+      }
 
       if (result?.success) {
         setToast({ message: result.message!, type: 'success' })
@@ -47,6 +64,8 @@ export default function AddIncomeForm({ categories, onSuccess, compact = false }
         form?.reset()
         setSelectedCategory('')
         setSelectedDate(new Date())
+        setIsRecurring(false)
+        setRecurringMonths('12')
         onSuccess?.()
       } else {
         setToast({ message: result?.error || 'Erro desconhecido', type: 'error' })
@@ -101,7 +120,7 @@ export default function AddIncomeForm({ categories, onSuccess, compact = false }
 
           <div className="space-y-2">
             <Label className="text-sm font-medium text-gray-700">
-              Data
+              {isRecurring ? 'Mês inicial' : 'Data'}
             </Label>
             <DatePicker
               date={selectedDate}
@@ -110,6 +129,46 @@ export default function AddIncomeForm({ categories, onSuccess, compact = false }
               disabled={isPending}
             />
           </div>
+        </div>
+
+        {/* Receita Recorrente */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100">
+            <div className="flex items-center gap-2">
+              <Repeat className="h-4 w-4 text-green-600" />
+              <Label htmlFor="recurring-switch" className="text-sm font-medium text-gray-700 cursor-pointer">
+                Receita recorrente
+              </Label>
+            </div>
+            <Switch
+              id="recurring-switch"
+              checked={isRecurring}
+              onCheckedChange={setIsRecurring}
+              disabled={isPending}
+            />
+          </div>
+
+          {isRecurring && (
+            <div className="p-3 bg-green-50/50 rounded-lg border border-green-100 space-y-2">
+              <Label className="text-sm font-medium text-gray-700">
+                Repetir por quantos meses?
+              </Label>
+              <Select value={recurringMonths} onValueChange={setRecurringMonths} disabled={isPending}>
+                <SelectTrigger className="h-11 border-gray-200">
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="3">3 meses</SelectItem>
+                  <SelectItem value="6">6 meses</SelectItem>
+                  <SelectItem value="12">12 meses (1 ano)</SelectItem>
+                  <SelectItem value="24">24 meses (2 anos)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                Será criada uma receita para cada mês, começando em {selectedDate ? selectedDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : 'data selecionada'}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Categoria */}
@@ -147,12 +206,12 @@ export default function AddIncomeForm({ categories, onSuccess, compact = false }
           {isPending ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Salvando...
+              {isRecurring ? `Criando ${recurringMonths} receitas...` : 'Salvando...'}
             </>
           ) : (
             <>
-              <TrendingUp className="mr-2 h-5 w-5" />
-              Adicionar Receita
+              {isRecurring ? <Repeat className="mr-2 h-5 w-5" /> : <TrendingUp className="mr-2 h-5 w-5" />}
+              {isRecurring ? `Criar ${recurringMonths} Receitas` : 'Adicionar Receita'}
             </>
           )}
         </Button>
