@@ -32,13 +32,14 @@ interface Category {
 interface IncomeCrudProps {
   incomes: Income[]
   categories: Category[]
+  currentUserId?: string
 }
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
 type PeriodFilter = 'all' | 'month'
 
-export default function IncomeCrud({ incomes, categories }: IncomeCrudProps) {
+export default function IncomeCrud({ incomes, categories, currentUserId }: IncomeCrudProps) {
   const [searchFilter, setSearchFilter] = useState('')
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('month')
 
@@ -144,7 +145,7 @@ export default function IncomeCrud({ incomes, categories }: IncomeCrudProps) {
       accentColor="#10B981"
       extraFilters={periodFilterComponent}
     >
-      <IncomeTable incomes={filteredIncomes} categories={categories} searchFilter={searchFilter} />
+      <IncomeTable incomes={filteredIncomes} categories={categories} searchFilter={searchFilter} currentUserId={currentUserId} />
     </CrudLayout>
   )
 }

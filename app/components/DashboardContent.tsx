@@ -10,6 +10,8 @@ import CategoryCrud from './CategoryCrud'
 import BudgetCrud from './BudgetCrud'
 import CardCrud from './CardCrud'
 import FloatingActionButton from './FloatingActionButton'
+import PendingInviteBanner from './PendingInviteBanner'
+import InvitePartnerModal from './InvitePartnerModal'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
@@ -43,6 +45,19 @@ interface User {
   createdAt?: Date
 }
 
+interface Partnership {
+  id: string
+  status: string
+  inviteeEmail: string
+  inviter: { id: string; name: string | null; email: string | null; image: string | null }
+  invitee: { id: string; name: string | null; email: string | null; image: string | null } | null
+}
+
+interface PendingInvite {
+  id: string
+  inviter: { id: string; name: string | null; email: string | null; image: string | null }
+}
+
 interface DashboardContentProps {
   user: User
   incomes: any[]
@@ -55,6 +70,9 @@ interface DashboardContentProps {
   upcomingInstallments: any[]
   currentMonth: number
   currentYear: number
+  partnership: Partnership | null
+  pendingInvites: PendingInvite[]
+  sentInvites: { id: string; inviteeEmail: string; status: string }[]
 }
 
 // Tooltip customizado para os gráficos
@@ -86,6 +104,9 @@ export default function DashboardContent({
   upcomingInstallments,
   currentMonth,
   currentYear,
+  partnership,
+  pendingInvites,
+  sentInvites,
 }: DashboardContentProps) {
   const [activeSection, setActiveSection] = useState('dashboard')
   const [selectedMonth, setSelectedMonth] = useState(currentMonth)
@@ -94,6 +115,7 @@ export default function DashboardContent({
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [isLoading, setIsLoading] = useState(false)
   const [reportView, setReportView] = useState<'planilha' | 'analise'>('planilha')
+  const [showPartnerModal, setShowPartnerModal] = useState(false)
 
   const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                       'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
@@ -826,7 +848,7 @@ export default function DashboardContent({
   if (activeSection === 'receitas') {
     return (
       <>
-        <IncomeCrud incomes={incomes} categories={categories} />
+        <IncomeCrud incomes={incomes} categories={categories} currentUserId={user.id} />
         <FloatingActionButton categories={categories} />
       </>
     )
@@ -836,7 +858,7 @@ export default function DashboardContent({
   if (activeSection === 'despesas') {
     return (
       <>
-        <ExpenseCrud expenses={expenses} categories={categories} cards={cards} transactions={transactions} />
+        <ExpenseCrud expenses={expenses} categories={categories} cards={cards} transactions={transactions} currentUserId={user.id} />
         <FloatingActionButton categories={categories} />
       </>
     )
@@ -846,7 +868,7 @@ export default function DashboardContent({
   if (activeSection === 'cartoes') {
     return (
       <>
-        <CardCrud cards={cards} transactions={transactions} categories={categories} />
+        <CardCrud cards={cards} transactions={transactions} categories={categories} currentUserId={user.id} />
         <FloatingActionButton categories={categories} />
       </>
     )
@@ -879,17 +901,49 @@ export default function DashboardContent({
 
   // Seção de Relatórios
   if (activeSection === 'relatorios') {
-    // Gerar próximos 6 meses a partir do mês atual
-    const months: { month: number; year: number; label: string }[] = []
+    // Coletar todos os meses que têm despesas ou transações de cartão
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-    for (let i = 0; i < 6; i++) {
-      const d = new Date(currentYear, currentMonth - 1 + i, 1)
-      months.push({
-        month: d.getMonth() + 1,
-        year: d.getFullYear(),
-        label: `${monthNames[d.getMonth()]}/${d.getFullYear()}`
+    const monthSet = new Set<string>()
+
+    // Adicionar meses das despesas
+    expenses.forEach((exp: any) => {
+      const d = new Date(exp.dueDate)
+      monthSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    })
+
+    // Adicionar meses das parcelas de cartão
+    transactions.forEach((t: any) => {
+      t.installments?.forEach((inst: any) => {
+        const d = new Date(inst.dueDate)
+        monthSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
       })
+    })
+
+    // Adicionar meses das receitas
+    incomes.forEach((inc: any) => {
+      const d = new Date(inc.date)
+      monthSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    })
+
+    // Se não houver dados, mostrar os próximos 6 meses
+    if (monthSet.size === 0) {
+      for (let i = 0; i < 6; i++) {
+        const d = new Date(currentYear, currentMonth - 1 + i, 1)
+        monthSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+      }
     }
+
+    // Converter para array e ordenar cronologicamente
+    const months = Array.from(monthSet)
+      .sort()
+      .map(key => {
+        const [year, month] = key.split('-').map(Number)
+        return {
+          month,
+          year,
+          label: `${monthNames[month - 1]}/${year}`
+        }
+      })
 
     // Agrupar despesas fixas e parceladas por descrição/cartão
     const expenseRows: {
@@ -899,39 +953,56 @@ export default function DashboardContent({
       dueDay: number
       isFixed: boolean
       isCard: boolean
-      values: { [key: string]: { amount: number; isPaid: boolean } }
+      fixedGroupId?: string
+      values: { [key: string]: { amount: number; isPaid: boolean; expenseId?: string } }
     }[] = []
 
-    // Despesas normais (fixas)
+    // Despesas normais (fixas e variáveis)
     expenses.forEach((exp: any) => {
-      const key = `exp-${exp.id}`
-      const monthKey = `${new Date(exp.dueDate).getMonth() + 1}-${new Date(exp.dueDate).getFullYear()}`
+      const expDate = new Date(exp.dueDate)
+      const mKey = `${expDate.getMonth() + 1}-${expDate.getFullYear()}`
 
-      // Verificar se já existe uma linha com mesma descrição
-      let row = expenseRows.find(r => r.description === exp.description && r.isFixed && !r.isCard)
-      if (!row) {
+      // Para despesas fixas, agrupa pelo fixedGroupId ou descrição (fallback para despesas antigas)
+      // Para despesas não fixas, cada uma é uma linha separada
+      let row: typeof expenseRows[0] | undefined
+
+      if (exp.isFixed) {
+        // Agrupa despesas fixas pelo fixedGroupId ou descrição
+        const groupKey = exp.fixedGroupId || exp.description
+        row = expenseRows.find(r =>
+          r.isFixed &&
+          !r.isCard &&
+          (r.fixedGroupId === groupKey || (!r.fixedGroupId && r.description === exp.description))
+        )
+        if (!row) {
+          row = {
+            id: `exp-${exp.id}`,
+            description: exp.description,
+            source: exp.category?.name || 'Geral',
+            dueDay: expDate.getDate(),
+            isFixed: true,
+            isCard: false,
+            fixedGroupId: exp.fixedGroupId,
+            values: {}
+          }
+          expenseRows.push(row)
+        }
+      } else {
+        // Despesa não fixa - cada uma é uma linha separada
         row = {
-          id: key,
+          id: `exp-${exp.id}`,
           description: exp.description,
           source: exp.category?.name || 'Geral',
-          dueDay: new Date(exp.dueDate).getDate(),
-          isFixed: exp.isFixed || false,
+          dueDay: expDate.getDate(),
+          isFixed: false,
           isCard: false,
           values: {}
         }
         expenseRows.push(row)
       }
 
-      months.forEach(m => {
-        const mKey = `${m.month}-${m.year}`
-        const expDate = new Date(exp.dueDate)
-        if (expDate.getMonth() + 1 === m.month && expDate.getFullYear() === m.year) {
-          row!.values[mKey] = { amount: exp.amount, isPaid: exp.isPaid || false }
-        } else if (exp.isFixed && !row!.values[mKey]) {
-          // Despesa fixa: replica para todos os meses
-          row!.values[mKey] = { amount: exp.amount, isPaid: false }
-        }
-      })
+      // Adiciona o valor no mês correspondente
+      row.values[mKey] = { amount: exp.amount, isPaid: exp.isPaid || false, expenseId: exp.id }
     })
 
     // Transações de cartão (parcelas)
@@ -1001,163 +1072,269 @@ export default function DashboardContent({
 
     return (
       <>
-        <div className="space-y-6">
+        <div className="space-y-6 overflow-x-hidden">
           {/* Header com Tabs */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Relatórios</h2>
-              <p className="text-gray-500">Controle completo das suas finanças</p>
-            </div>
+          <div className="flex flex-col gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Relatórios</h2>
+                <p className="text-sm sm:text-base text-gray-500">Controle completo das suas finanças</p>
+              </div>
 
-            {/* Tabs */}
-            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
-              <button
-                onClick={() => setReportView('planilha')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                  reportView === 'planilha'
-                    ? 'bg-white text-indigo-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Planilha Mensal
-              </button>
-              <button
-                onClick={() => setReportView('analise')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                  reportView === 'analise'
-                    ? 'bg-white text-indigo-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Análise por Período
-              </button>
+              {/* Tabs */}
+              <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg w-full sm:w-auto flex-shrink-0">
+                <button
+                  onClick={() => setReportView('planilha')}
+                  className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md transition-all ${
+                    reportView === 'planilha'
+                      ? 'bg-white text-indigo-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Planilha
+                </button>
+                <button
+                  onClick={() => setReportView('analise')}
+                  className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md transition-all ${
+                    reportView === 'analise'
+                      ? 'bg-white text-indigo-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Análise
+                </button>
+              </div>
             </div>
           </div>
 
           {/* VISÃO: Planilha Mensal */}
           {reportView === 'planilha' && (
             <>
-              {/* Tabela Estilo Planilha */}
-              <Card className="bg-white shadow-sm border-0 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="text-left p-3 font-semibold text-gray-700 sticky left-0 bg-gray-100 min-w-[200px]">Descrição</th>
-                    <th className="text-left p-3 font-semibold text-gray-700 min-w-[100px]">Conta/Cartão</th>
-                    <th className="text-center p-3 font-semibold text-gray-700 min-w-[50px]">Dia</th>
-                    {months.map(m => (
-                      <th key={`${m.month}-${m.year}`} className="text-right p-3 font-semibold text-gray-700 min-w-[110px]">
-                        {m.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {expenseRows.map((row, idx) => (
-                    <tr key={row.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="p-3 font-medium text-gray-900 sticky left-0 bg-inherit">
-                        <div className="flex items-center gap-2">
-                          {row.isCard && <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">Cartão</span>}
-                          {row.isFixed && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Fixo</span>}
-                          {row.description}
-                        </div>
-                      </td>
-                      <td className="p-3 text-gray-600">{row.source}</td>
-                      <td className="p-3 text-center text-gray-600">{row.dueDay}</td>
-                      {months.map(m => {
-                        const mKey = `${m.month}-${m.year}`
+              {/* Tabela Estilo Planilha - Desktop/Tablet */}
+              <Card className="bg-white shadow-sm border-0 hidden sm:block overflow-hidden">
+                <div className="overflow-x-auto max-w-full">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="text-left p-2 md:p-3 font-semibold text-gray-700 min-w-[140px] md:min-w-[180px] lg:min-w-[220px] whitespace-nowrap">Descrição</th>
+                        <th className="text-left p-2 md:p-3 font-semibold text-gray-700 min-w-[90px] md:min-w-[110px] hidden lg:table-cell whitespace-nowrap">Conta/Cartão</th>
+                        <th className="text-center p-2 md:p-3 font-semibold text-gray-700 w-14 hidden md:table-cell">Dia</th>
+                        {months.map(m => (
+                          <th key={`${m.month}-${m.year}`} className="text-right p-2 md:p-3 font-semibold text-gray-700 min-w-[85px] md:min-w-[100px] whitespace-nowrap">
+                            {m.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {expenseRows.map((row, idx) => (
+                        <tr key={row.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="p-2 md:p-3 font-medium text-gray-900">
+                            <div className="flex items-center gap-1 md:gap-2 flex-wrap">
+                              {row.isCard && <span className="text-[10px] md:text-xs bg-indigo-100 text-indigo-700 px-1 md:px-1.5 py-0.5 rounded whitespace-nowrap">Cartão</span>}
+                              {row.isFixed && <span className="text-[10px] md:text-xs bg-blue-100 text-blue-700 px-1 md:px-1.5 py-0.5 rounded whitespace-nowrap">Fixo</span>}
+                              <span className="text-xs md:text-sm">{row.description}</span>
+                            </div>
+                          </td>
+                          <td className="p-2 md:p-3 text-gray-600 hidden lg:table-cell text-xs md:text-sm">{row.source}</td>
+                          <td className="p-2 md:p-3 text-center text-gray-600 hidden md:table-cell text-xs md:text-sm">{row.dueDay}</td>
+                          {months.map(m => {
+                            const mKey = `${m.month}-${m.year}`
+                            const value = row.values[mKey]
+                            return (
+                              <td
+                                key={mKey}
+                                className={`p-2 md:p-3 text-right font-medium text-[11px] md:text-sm whitespace-nowrap ${
+                                  value
+                                    ? value.isPaid
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : 'bg-rose-100 text-rose-700'
+                                    : 'text-gray-300'
+                                }`}
+                              >
+                                {value ? formatCurrency(value.amount) : '-'}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+
+                      {expenseRows.length === 0 && (
+                        <tr>
+                          <td colSpan={3 + months.length} className="p-8 text-center text-gray-400">
+                            Nenhuma despesa cadastrada
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+
+                    {/* Totais */}
+                    <tfoot className="border-t-2 border-gray-300">
+                      {/* Receita Total */}
+                      <tr className="bg-emerald-50">
+                        <td colSpan={1} className="p-2 md:p-3 font-bold text-emerald-700 text-xs md:text-sm">
+                          RECEITA
+                        </td>
+                        <td className="hidden lg:table-cell bg-emerald-50"></td>
+                        <td className="hidden md:table-cell bg-emerald-50"></td>
+                        {months.map(m => {
+                          const mKey = `${m.month}-${m.year}`
+                          return (
+                            <td key={mKey} className="p-2 md:p-3 text-right font-bold text-emerald-700 text-[11px] md:text-sm whitespace-nowrap">
+                              {formatCurrency(monthTotals[mKey]?.receita || 0)}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                      {/* Despesa Total */}
+                      <tr className="bg-rose-50">
+                        <td colSpan={1} className="p-2 md:p-3 font-bold text-rose-700 text-xs md:text-sm">
+                          DESPESA
+                        </td>
+                        <td className="hidden lg:table-cell bg-rose-50"></td>
+                        <td className="hidden md:table-cell bg-rose-50"></td>
+                        {months.map(m => {
+                          const mKey = `${m.month}-${m.year}`
+                          return (
+                            <td key={mKey} className="p-2 md:p-3 text-right font-bold text-rose-700 text-[11px] md:text-sm whitespace-nowrap">
+                              {formatCurrency(monthTotals[mKey]?.despesa || 0)}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                      {/* Sobra/Saldo */}
+                      <tr className="bg-gray-100">
+                        <td colSpan={1} className="p-2 md:p-3 font-bold text-gray-900 text-xs md:text-sm">
+                          SOBRA
+                        </td>
+                        <td className="hidden lg:table-cell bg-gray-100"></td>
+                        <td className="hidden md:table-cell bg-gray-100"></td>
+                        {months.map(m => {
+                          const mKey = `${m.month}-${m.year}`
+                          const sobra = (monthTotals[mKey]?.receita || 0) - (monthTotals[mKey]?.despesa || 0)
+                          return (
+                            <td
+                              key={mKey}
+                              className={`p-2 md:p-3 text-right font-bold text-[11px] md:text-sm whitespace-nowrap ${
+                                sobra >= 0 ? 'text-emerald-700 bg-emerald-100' : 'text-rose-700 bg-rose-100'
+                              }`}
+                            >
+                              {formatCurrency(sobra)}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </Card>
+
+              {/* Visão Mobile - Cards por Mês */}
+              <div className="sm:hidden space-y-4">
+                {/* Resumo Mensal - Cards compactos */}
+                <div className="grid grid-cols-3 gap-2">
+                  <Card className="bg-emerald-50 p-3 text-center border-0">
+                    <p className="text-[10px] text-emerald-600 font-medium">RECEITA</p>
+                    <p className="text-sm font-bold text-emerald-700">{formatCurrency(monthTotals[`${months[0]?.month}-${months[0]?.year}`]?.receita || 0)}</p>
+                  </Card>
+                  <Card className="bg-rose-50 p-3 text-center border-0">
+                    <p className="text-[10px] text-rose-600 font-medium">DESPESA</p>
+                    <p className="text-sm font-bold text-rose-700">{formatCurrency(monthTotals[`${months[0]?.month}-${months[0]?.year}`]?.despesa || 0)}</p>
+                  </Card>
+                  <Card className={`p-3 text-center border-0 ${
+                    (monthTotals[`${months[0]?.month}-${months[0]?.year}`]?.receita || 0) - (monthTotals[`${months[0]?.month}-${months[0]?.year}`]?.despesa || 0) >= 0
+                      ? 'bg-emerald-100' : 'bg-rose-100'
+                  }`}>
+                    <p className="text-[10px] text-gray-600 font-medium">SOBRA</p>
+                    <p className={`text-sm font-bold ${
+                      (monthTotals[`${months[0]?.month}-${months[0]?.year}`]?.receita || 0) - (monthTotals[`${months[0]?.month}-${months[0]?.year}`]?.despesa || 0) >= 0
+                        ? 'text-emerald-700' : 'text-rose-700'
+                    }`}>
+                      {formatCurrency((monthTotals[`${months[0]?.month}-${months[0]?.year}`]?.receita || 0) - (monthTotals[`${months[0]?.month}-${months[0]?.year}`]?.despesa || 0))}
+                    </p>
+                  </Card>
+                </div>
+
+                {/* Lista de despesas como cards */}
+                <Card className="bg-white shadow-sm border-0 overflow-hidden">
+                  <div className="p-3 bg-gray-50 border-b">
+                    <h4 className="font-semibold text-gray-700 text-sm">Despesas - {months[0]?.label}</h4>
+                  </div>
+                  <div className="divide-y divide-gray-100 max-h-[400px] overflow-y-auto">
+                    {expenseRows.length === 0 ? (
+                      <p className="p-6 text-center text-gray-400 text-sm">Nenhuma despesa cadastrada</p>
+                    ) : (
+                      expenseRows.map((row) => {
+                        const mKey = `${months[0]?.month}-${months[0]?.year}`
                         const value = row.values[mKey]
                         return (
-                          <td
-                            key={mKey}
-                            className={`p-3 text-right font-medium ${
+                          <div key={row.id} className="p-3 flex items-center justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1 flex-wrap mb-1">
+                                {row.isCard && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded">Cartão</span>}
+                                {row.isFixed && <span className="text-[10px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded">Fixo</span>}
+                              </div>
+                              <p className="font-medium text-gray-900 text-sm truncate">{row.description}</p>
+                              <p className="text-xs text-gray-500">{row.source} • Dia {row.dueDay}</p>
+                            </div>
+                            <div className={`px-2 py-1 rounded text-sm font-semibold whitespace-nowrap ${
                               value
                                 ? value.isPaid
                                   ? 'bg-emerald-100 text-emerald-700'
                                   : 'bg-rose-100 text-rose-700'
-                                : 'text-gray-300'
-                            }`}
-                          >
-                            {value ? formatCurrency(value.amount) : '-'}
-                          </td>
+                                : 'bg-gray-100 text-gray-400'
+                            }`}>
+                              {value ? formatCurrency(value.amount) : '-'}
+                            </div>
+                          </div>
                         )
-                      })}
-                    </tr>
-                  ))}
+                      })
+                    )}
+                  </div>
+                </Card>
 
-                  {expenseRows.length === 0 && (
-                    <tr>
-                      <td colSpan={3 + months.length} className="p-8 text-center text-gray-400">
-                        Nenhuma despesa cadastrada
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-
-                {/* Totais */}
-                <tfoot className="border-t-2 border-gray-300">
-                  {/* Receita Total */}
-                  <tr className="bg-emerald-50">
-                    <td colSpan={3} className="p-3 font-bold text-emerald-700 sticky left-0 bg-emerald-50">
-                      RECEITA
-                    </td>
-                    {months.map(m => {
+                {/* Scroll horizontal dos meses */}
+                <div className="overflow-x-auto -mx-4 px-4 pb-2">
+                  <div className="flex gap-2" style={{ minWidth: 'max-content' }}>
+                    {months.slice(1).map(m => {
                       const mKey = `${m.month}-${m.year}`
+                      const receita = monthTotals[mKey]?.receita || 0
+                      const despesa = monthTotals[mKey]?.despesa || 0
+                      const sobra = receita - despesa
                       return (
-                        <td key={mKey} className="p-3 text-right font-bold text-emerald-700">
-                          {formatCurrency(monthTotals[mKey]?.receita || 0)}
-                        </td>
+                        <Card key={mKey} className="bg-white shadow-sm p-3 min-w-[130px] border-0">
+                          <p className="text-xs font-semibold text-gray-700 mb-2">{m.label}</p>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Receita:</span>
+                              <span className="text-emerald-600 font-medium">{formatCurrency(receita)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Despesa:</span>
+                              <span className="text-rose-600 font-medium">{formatCurrency(despesa)}</span>
+                            </div>
+                            <div className="flex justify-between pt-1 border-t">
+                              <span className="text-gray-700 font-medium">Sobra:</span>
+                              <span className={`font-bold ${sobra >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {formatCurrency(sobra)}
+                              </span>
+                            </div>
+                          </div>
+                        </Card>
                       )
                     })}
-                  </tr>
-                  {/* Despesa Total */}
-                  <tr className="bg-rose-50">
-                    <td colSpan={3} className="p-3 font-bold text-rose-700 sticky left-0 bg-rose-50">
-                      DESPESA
-                    </td>
-                    {months.map(m => {
-                      const mKey = `${m.month}-${m.year}`
-                      return (
-                        <td key={mKey} className="p-3 text-right font-bold text-rose-700">
-                          {formatCurrency(monthTotals[mKey]?.despesa || 0)}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                  {/* Sobra/Saldo */}
-                  <tr className="bg-gray-100">
-                    <td colSpan={3} className="p-3 font-bold text-gray-900 sticky left-0 bg-gray-100">
-                      SOBRA
-                    </td>
-                    {months.map(m => {
-                      const mKey = `${m.month}-${m.year}`
-                      const sobra = (monthTotals[mKey]?.receita || 0) - (monthTotals[mKey]?.despesa || 0)
-                      return (
-                        <td
-                          key={mKey}
-                          className={`p-3 text-right font-bold ${
-                            sobra >= 0 ? 'text-emerald-700 bg-emerald-100' : 'text-rose-700 bg-rose-100'
-                          }`}
-                        >
-                          {formatCurrency(sobra)}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </Card>
+                  </div>
+                </div>
+              </div>
 
               {/* Legenda */}
-              <div className="flex items-center gap-6 text-sm text-gray-600">
+              <div className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm text-gray-600">
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-emerald-100 border border-emerald-300"></div>
+                  <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-emerald-100 border border-emerald-300"></div>
                   <span>Pago</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-rose-100 border border-rose-300"></div>
+                  <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-rose-100 border border-rose-300"></div>
                   <span>Pendente</span>
                 </div>
               </div>
@@ -1168,23 +1345,23 @@ export default function DashboardContent({
           {reportView === 'analise' && (
             <>
               {/* Filtros */}
-              <Card className="bg-white shadow-sm border-0 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Filtros</h3>
-                <div className="flex flex-wrap items-center gap-4">
+              <Card className="bg-white shadow-sm border-0 p-4 sm:p-6">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Filtros</h3>
+                <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 sm:gap-4">
                   {/* Navegação de Mês */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center gap-2">
                     <Button
                       variant="outline"
                       size="icon"
                       onClick={goToPreviousMonth}
-                      className="h-9 w-9"
+                      className="h-8 w-8 sm:h-9 sm:w-9"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
 
-                    <div className="flex items-center gap-2 min-w-[180px] justify-center">
+                    <div className="flex items-center gap-2 min-w-[140px] sm:min-w-[180px] justify-center">
                       <Calendar className="h-4 w-4 text-indigo-600" />
-                      <span className="font-semibold text-gray-900">
+                      <span className="font-semibold text-gray-900 text-sm sm:text-base">
                         {monthNames[selectedMonth - 1]} {selectedYear}
                       </span>
                     </div>
@@ -1193,37 +1370,40 @@ export default function DashboardContent({
                       variant="outline"
                       size="icon"
                       onClick={goToNextMonth}
-                      className="h-9 w-9"
+                      className="h-8 w-8 sm:h-9 sm:w-9"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
 
-                  {/* Botão Mês Atual */}
-                  {!isCurrentMonthSelected && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={goToCurrentMonth}
-                      className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
-                    >
-                      Mês Atual
-                    </Button>
-                  )}
+                  {/* Botões de ação */}
+                  <div className="flex items-center justify-center gap-2 flex-wrap">
+                    {/* Botão Mês Atual */}
+                    {!isCurrentMonthSelected && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={goToCurrentMonth}
+                        className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 text-xs sm:text-sm h-8"
+                      >
+                        Mês Atual
+                      </Button>
+                    )}
 
-                  {/* Botão Ver Tudo */}
-                  <Button
-                    variant={showAllTime ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setShowAllTime(!showAllTime)}
-                    className={showAllTime ? 'bg-indigo-600 hover:bg-indigo-700' : ''}
-                  >
-                    {showAllTime ? 'Mostrando Tudo' : 'Ver Tudo'}
-                  </Button>
+                    {/* Botão Ver Tudo */}
+                    <Button
+                      variant={showAllTime ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setShowAllTime(!showAllTime)}
+                      className={`text-xs sm:text-sm h-8 ${showAllTime ? 'bg-indigo-600 hover:bg-indigo-700' : ''}`}
+                    >
+                      {showAllTime ? 'Ver Tudo' : 'Ver Tudo'}
+                    </Button>
+                  </div>
 
                   {/* Categoria */}
                   <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                    <SelectTrigger className="w-[200px]">
+                    <SelectTrigger className="w-full sm:w-[200px] h-8 sm:h-9 text-sm">
                       <SelectValue placeholder="Todas categorias" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1242,85 +1422,85 @@ export default function DashboardContent({
               </Card>
 
               {/* Resumo do Período */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="bg-white shadow-sm border-0 p-6">
-                  <p className="text-sm text-gray-500 mb-1">Total Receitas</p>
-                  <p className="text-2xl font-bold text-emerald-600">{formatCurrency(filteredKPIs.totalIncome)}</p>
-                  <p className="text-xs text-gray-400 mt-1">{filteredIncomes.length} registros</p>
+              <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                <Card className="bg-white shadow-sm border-0 p-3 sm:p-6">
+                  <p className="text-[10px] sm:text-sm text-gray-500 mb-0.5 sm:mb-1">Total Receitas</p>
+                  <p className="text-sm sm:text-2xl font-bold text-emerald-600">{formatCurrency(filteredKPIs.totalIncome)}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5 sm:mt-1 hidden sm:block">{filteredIncomes.length} registros</p>
                 </Card>
-                <Card className="bg-white shadow-sm border-0 p-6">
-                  <p className="text-sm text-gray-500 mb-1">Total Despesas</p>
-                  <p className="text-2xl font-bold text-rose-600">{formatCurrency(filteredKPIs.totalExpenses)}</p>
-                  <p className="text-xs text-gray-400 mt-1">{filteredExpenses.length} registros</p>
+                <Card className="bg-white shadow-sm border-0 p-3 sm:p-6">
+                  <p className="text-[10px] sm:text-sm text-gray-500 mb-0.5 sm:mb-1">Total Despesas</p>
+                  <p className="text-sm sm:text-2xl font-bold text-rose-600">{formatCurrency(filteredKPIs.totalExpenses)}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5 sm:mt-1 hidden sm:block">{filteredExpenses.length} registros</p>
                 </Card>
-                <Card className="bg-white shadow-sm border-0 p-6">
-                  <p className="text-sm text-gray-500 mb-1">Saldo do Período</p>
-                  <p className={`text-2xl font-bold ${filteredKPIs.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                <Card className="bg-white shadow-sm border-0 p-3 sm:p-6">
+                  <p className="text-[10px] sm:text-sm text-gray-500 mb-0.5 sm:mb-1">Saldo</p>
+                  <p className={`text-sm sm:text-2xl font-bold ${filteredKPIs.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                     {formatCurrency(filteredKPIs.balance)}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5 sm:mt-1 hidden sm:block">
                     {filteredKPIs.balance >= 0 ? 'Superávit' : 'Déficit'}
                   </p>
                 </Card>
               </div>
 
               {/* Totais por Categoria */}
-              <Card className="bg-white shadow-sm border-0 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Totais por Categoria</h3>
+              <Card className="bg-white shadow-sm border-0 p-4 sm:p-6">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Totais por Categoria</h3>
                 {categoryTotals.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="space-y-2 sm:space-y-3">
                     {categoryTotals.map((cat: any) => (
-                      <div key={cat.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-3">
+                      <div key={cat.id} className="flex items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg gap-2">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                           <div
-                            className="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
+                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-sm sm:text-lg flex-shrink-0"
                             style={{ backgroundColor: `${cat.color}20` }}
                           >
                             {cat.icon || '📁'}
                           </div>
-                          <div>
-                            <p className="font-medium text-gray-900">{cat.name}</p>
-                            <p className="text-xs text-gray-500">{cat.type === 'INCOME' ? 'Receita' : 'Despesa'}</p>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-gray-900 text-sm sm:text-base truncate">{cat.name}</p>
+                            <p className="text-[10px] sm:text-xs text-gray-500">{cat.type === 'INCOME' ? 'Receita' : 'Despesa'}</p>
                           </div>
                         </div>
-                        <p className={`text-lg font-bold ${cat.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        <p className={`text-sm sm:text-lg font-bold flex-shrink-0 ${cat.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'}`}>
                           {formatCurrency(cat.total)}
                         </p>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-center text-gray-400 py-8">Nenhum dado no período selecionado</p>
+                  <p className="text-center text-gray-400 py-6 sm:py-8 text-sm">Nenhum dado no período selecionado</p>
                 )}
               </Card>
 
               {/* Lista de Transações */}
-              <Card className="bg-white shadow-sm border-0 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Transações do Período</h3>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
+              <Card className="bg-white shadow-sm border-0 p-4 sm:p-6">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Transações do Período</h3>
+                <div className="space-y-1 sm:space-y-2 max-h-80 sm:max-h-96 overflow-y-auto">
                   {[...filteredIncomes.map((i: any) => ({ ...i, type: 'income', date: i.date })),
                     ...filteredExpenses.map((e: any) => ({ ...e, type: 'expense', date: e.dueDate }))]
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .slice(0, 50)
                     .map((item: any, index: number) => (
-                      <div key={`${item.type}-${item.id}-${index}`} className="flex items-center justify-between p-3 border-b border-gray-100 last:border-0">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-2 h-2 rounded-full ${item.type === 'income' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                          <div>
-                            <p className="font-medium text-gray-900">{item.description}</p>
-                            <p className="text-xs text-gray-500">
+                      <div key={`${item.type}-${item.id}-${index}`} className="flex items-center justify-between p-2 sm:p-3 border-b border-gray-100 last:border-0 gap-2">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${item.type === 'income' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-gray-900 text-sm truncate">{item.description}</p>
+                            <p className="text-[10px] sm:text-xs text-gray-500 truncate">
                               {new Date(item.date).toLocaleDateString('pt-BR')}
                               {item.category && ` • ${item.category.name}`}
                             </p>
                           </div>
                         </div>
-                        <p className={`font-semibold ${item.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        <p className={`font-semibold text-sm flex-shrink-0 ${item.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
                           {item.type === 'income' ? '+' : '-'}{formatCurrency(item.amount)}
                         </p>
                       </div>
                     ))}
                   {filteredIncomes.length === 0 && filteredExpenses.length === 0 && (
-                    <p className="text-center text-gray-400 py-8">Nenhuma transação no período</p>
+                    <p className="text-center text-gray-400 py-6 sm:py-8 text-sm">Nenhuma transação no período</p>
                   )}
                 </div>
               </Card>
@@ -1442,6 +1622,117 @@ export default function DashboardContent({
     )
   }
 
+  // Seção de Parceria
+  if (activeSection === 'parceria') {
+    const getPartnerInfo = () => {
+      if (!partnership) return null
+      return partnership.inviterId === user.id ? partnership.invitee : partnership.inviter
+    }
+    const partner = getPartnerInfo()
+
+    return (
+      <div className="space-y-6 max-w-2xl mx-auto">
+        {/* Banner de convites pendentes */}
+        <PendingInviteBanner invites={pendingInvites} />
+
+        {/* Card Principal */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Parceria</h2>
+
+          {partnership && partnership.status === 'ACCEPTED' && partner ? (
+            // Parceria ativa
+            <div>
+              <div className="bg-gradient-to-r from-indigo-50 to-pink-50 rounded-xl p-6 mb-6">
+                <p className="text-sm text-gray-600 mb-4 text-center">Voces estao compartilhando dados!</p>
+                <div className="flex items-center justify-center gap-6">
+                  {/* Usuário atual */}
+                  <div className="text-center">
+                    {user.image ? (
+                      <img src={user.image} alt="" className="w-16 h-16 rounded-full mx-auto mb-2" />
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-indigo-200 flex items-center justify-center mx-auto mb-2 text-indigo-700 font-bold text-xl">
+                        {(user.name || user.email || 'V').slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                    <p className="text-sm font-medium text-gray-900">{user.name || 'Voce'}</p>
+                  </div>
+
+                  {/* Coração */}
+                  <div className="text-pink-500 text-3xl">❤️</div>
+
+                  {/* Parceiro */}
+                  <div className="text-center">
+                    {partner.image ? (
+                      <img src={partner.image} alt="" className="w-16 h-16 rounded-full mx-auto mb-2" />
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-pink-200 flex items-center justify-center mx-auto mb-2 text-pink-700 font-bold text-xl">
+                        {(partner.name || partner.email || 'P').slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                    <p className="text-sm font-medium text-gray-900">{partner.name || 'Parceiro(a)'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-center text-sm text-gray-500 mb-6">
+                <p>Todas as despesas, receitas, cartoes e orcamentos sao compartilhados.</p>
+                <p>Voces podem ver e gerenciar tudo juntos!</p>
+              </div>
+
+              <button
+                onClick={() => setShowPartnerModal(true)}
+                className="w-full py-3 px-4 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-colors"
+              >
+                Gerenciar Parceria
+              </button>
+            </div>
+          ) : (
+            // Sem parceria
+            <div className="text-center">
+              <div className="w-20 h-20 bg-gradient-to-br from-indigo-100 to-pink-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-4xl">💑</span>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Convide seu parceiro(a)</h3>
+              <p className="text-gray-500 text-sm mb-6">
+                Compartilhe suas financas com quem voce ama.<br />
+                Ambos poderao ver e gerenciar despesas, receitas e cartoes.
+              </p>
+              <button
+                onClick={() => setShowPartnerModal(true)}
+                className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold hover:from-indigo-700 hover:to-purple-700 transition-all"
+              >
+                Convidar Parceiro(a)
+              </button>
+
+              {/* Convites enviados pendentes */}
+              {sentInvites.length > 0 && (
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                  <p className="text-sm text-gray-500 mb-3">Convites pendentes:</p>
+                  {sentInvites.map((invite) => (
+                    <div key={invite.id} className="flex items-center justify-center gap-2 text-sm">
+                      <span className="text-gray-700">{invite.inviteeEmail}</span>
+                      <span className="text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full text-xs">Aguardando</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Modal */}
+        <InvitePartnerModal
+          isOpen={showPartnerModal}
+          onClose={() => setShowPartnerModal(false)}
+          partnership={partnership}
+          sentInvites={sentInvites}
+          currentUserId={user.id || ''}
+        />
+      </div>
+    )
+  }
+
+  // Seção não encontrada (fallback)
   return (
     <>
       <div className="flex items-center justify-center min-h-[60vh]">

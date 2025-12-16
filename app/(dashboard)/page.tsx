@@ -5,6 +5,7 @@ import { getAllExpenses } from '@/app/actions/expenses'
 import { getIncomes } from '@/app/actions/income'
 import { getCategories, seedDefaultCategories, deduplicateCategories } from '@/app/actions/categories'
 import { getBudgetWithSpent, getCategoriesWithoutBudget } from '@/app/actions/budget'
+import { getActivePartnership, getPendingInvites, getSentInvites, getPartnerInfo } from '@/app/actions/partnership'
 import DashboardContent from '@/app/components/DashboardContent'
 import Navbar from '@/app/components/Navbar'
 import Footer from '@/app/components/Footer'
@@ -60,7 +61,11 @@ export default async function Home() {
     incomes,
     categories,
     budgets,
-    availableCategories
+    availableCategories,
+    partnership,
+    pendingInvites,
+    sentInvites,
+    partnerInfo
   ] = await Promise.all([
     getCards(),
     getUpcomingInstallments(),
@@ -69,15 +74,19 @@ export default async function Home() {
     getIncomes(),
     getCategories(),
     getBudgetWithSpent(currentMonth, currentYear),
-    getCategoriesWithoutBudget(currentMonth, currentYear)
+    getCategoriesWithoutBudget(currentMonth, currentYear),
+    getActivePartnership(),
+    getPendingInvites(),
+    getSentInvites(),
+    getPartnerInfo()
   ])
 
   return (
     <>
-      <AppSidebar user={session.user} />
-      <SidebarInset className="flex flex-col min-h-screen bg-gray-50">
+      <AppSidebar user={session.user} partnerInfo={partnerInfo} />
+      <SidebarInset className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden">
         <Navbar user={session.user} />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 sm:p-6 overflow-x-hidden">
           <DashboardContent
             user={user}
             incomes={incomes}
@@ -90,6 +99,9 @@ export default async function Home() {
             upcomingInstallments={upcomingInstallments}
             currentMonth={currentMonth}
             currentYear={currentYear}
+            partnership={partnership}
+            pendingInvites={pendingInvites}
+            sentInvites={sentInvites}
           />
         </main>
         <Footer />

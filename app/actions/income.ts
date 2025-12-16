@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { incomeSchema, parseFormData } from '@/lib/validations'
 import { auth } from '@/auth'
+import { getPartnerIds } from './partnership'
 
 export async function createIncome(data: FormData) {
   try {
@@ -42,10 +43,13 @@ export async function getIncomes() {
     return []
   }
 
+  const partnerIds = await getPartnerIds()
+
   return await prisma.income.findMany({
-    where: { userId: session.user.id },
+    where: { userId: { in: partnerIds } },
     include: {
-      category: true
+      category: true,
+      user: { select: { id: true, name: true, image: true } }
     },
     orderBy: { date: 'desc' }
   })
@@ -58,10 +62,10 @@ export async function updateIncome(id: string, data: FormData) {
       return { success: false, error: 'Voce precisa estar logado' }
     }
 
-    // Verify income belongs to user
+    // Somente o dono pode editar
     const income = await prisma.income.findUnique({ where: { id } })
     if (!income || income.userId !== session.user.id) {
-      return { success: false, error: 'Receita nao encontrada' }
+      return { success: false, error: 'Voce so pode editar suas proprias receitas' }
     }
 
     const result = parseFormData(data, incomeSchema)
@@ -95,10 +99,10 @@ export async function deleteIncome(id: string) {
       return { success: false, error: 'Voce precisa estar logado' }
     }
 
-    // Verify income belongs to user
+    // Somente o dono pode excluir
     const income = await prisma.income.findUnique({ where: { id } })
     if (!income || income.userId !== session.user.id) {
-      return { success: false, error: 'Receita nao encontrada' }
+      return { success: false, error: 'Voce so pode excluir suas proprias receitas' }
     }
 
     await prisma.income.delete({

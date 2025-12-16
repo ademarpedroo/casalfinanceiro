@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { startOfMonth, endOfMonth } from 'date-fns'
 import { auth } from '@/auth'
+import { getPartnerIds } from './partnership'
 
 export async function createBudget(formData: FormData) {
   try {
@@ -48,13 +49,14 @@ export async function getBudgets(month?: number, year?: number) {
     return []
   }
 
+  const partnerIds = await getPartnerIds()
   const currentDate = new Date()
   const targetMonth = month ?? currentDate.getMonth() + 1
   const targetYear = year ?? currentDate.getFullYear()
 
   const budgets = await prisma.budget.findMany({
     where: {
-      userId: session.user.id,
+      userId: { in: partnerIds },
       month: targetMonth,
       year: targetYear,
     },
@@ -77,21 +79,23 @@ export async function getBudgetWithSpent(month?: number, year?: number) {
     return []
   }
 
+  const partnerIds = await getPartnerIds()
   const currentDate = new Date()
   const targetMonth = month ?? currentDate.getMonth() + 1
   const targetYear = year ?? currentDate.getFullYear()
 
   const budgets = await getBudgets(targetMonth, targetYear)
 
-  // Calculate spent amount for each budget
+  // Calculate spent amount for each budget (sum from ALL partners)
   const budgetsWithSpent = await Promise.all(
     budgets.map(async (budget) => {
       const monthStart = startOfMonth(new Date(targetYear, targetMonth - 1, 1))
       const monthEnd = endOfMonth(new Date(targetYear, targetMonth - 1, 1))
 
+      // Sum expenses from both partners for this category
       const expenses = await prisma.expense.findMany({
         where: {
-          userId: session.user.id,
+          userId: { in: partnerIds },
           categoryId: budget.categoryId,
           dueDate: {
             gte: monthStart,
@@ -122,11 +126,12 @@ export async function updateBudget(id: string, formData: FormData) {
       return { error: 'Voce precisa estar logado' }
     }
 
+    const partnerIds = await getPartnerIds()
     const limit = parseFloat(formData.get('limit') as string)
 
-    // Verify budget belongs to user
+    // Verify budget belongs to user or partner (joint budgets)
     const budget = await prisma.budget.findUnique({ where: { id } })
-    if (!budget || budget.userId !== session.user.id) {
+    if (!budget || !partnerIds.includes(budget.userId)) {
       return { error: 'Orcamento nao encontrado' }
     }
 
@@ -150,9 +155,11 @@ export async function deleteBudget(id: string) {
       return { error: 'Voce precisa estar logado' }
     }
 
-    // Verify budget belongs to user
+    const partnerIds = await getPartnerIds()
+
+    // Verify budget belongs to user or partner (joint budgets)
     const budget = await prisma.budget.findUnique({ where: { id } })
-    if (!budget || budget.userId !== session.user.id) {
+    if (!budget || !partnerIds.includes(budget.userId)) {
       return { error: 'Orcamento nao encontrado' }
     }
 
@@ -174,18 +181,20 @@ export async function getCategoriesWithoutBudget(month: number, year: number) {
     return []
   }
 
-  // Get all expense categories for this user
+  const partnerIds = await getPartnerIds()
+
+  // Get all expense categories for user and partner (shared)
   const allCategories = await prisma.category.findMany({
     where: {
-      userId: session.user.id,
+      userId: { in: partnerIds },
       type: 'EXPENSE',
     },
   })
 
-  // Get categories that already have budget for this month/year
+  // Get categories that already have budget for this month/year (from both partners)
   const budgets = await prisma.budget.findMany({
     where: {
-      userId: session.user.id,
+      userId: { in: partnerIds },
       month,
       year,
     },

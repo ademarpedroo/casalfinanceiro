@@ -24,6 +24,10 @@ model User {
   expenses      Expense[]
   incomes       Income[]
   sessions      Session[]
+
+  // Parcerias (compartilhamento entre casais)
+  partnershipsAsInviter Partnership[] @relation("PartnershipInviter")
+  partnershipsAsInvitee Partnership[] @relation("PartnershipInvitee")
 }
 
 model Account {
@@ -106,19 +110,20 @@ model Income {
 }
 
 model Expense {
-  id          String    @id @default(uuid())
-  userId      String
-  description String
-  amount      Float
-  dueDate     DateTime
-  paidAt      DateTime?
-  categoryId  String?
-  isFixed     Boolean   @default(false)
-  isPaid      Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  category    Category? @relation(fields: [categoryId], references: [id])
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  userId       String
+  description  String
+  amount       Float
+  dueDate      DateTime
+  paidAt       DateTime?
+  categoryId   String?
+  isFixed      Boolean   @default(false)
+  isPaid       Boolean   @default(false)
+  fixedGroupId String?   // Agrupa despesas fixas da mesma série (permite edição individual por mês)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  category     Category? @relation(fields: [categoryId], references: [id])
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model CreditCard {
@@ -163,4 +168,28 @@ model Installment {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   transaction   CardTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+}
+
+model Partnership {
+  id           String    @id @default(uuid())
+
+  // Usuário que enviou o convite
+  inviterId    String
+  inviter      User      @relation("PartnershipInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+
+  // Usuário convidado (null até aceitar, pois pode não ter conta ainda)
+  inviteeId    String?
+  invitee      User?     @relation("PartnershipInvitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+
+  // Email do convidado (para convites pendentes)
+  inviteeEmail String
+
+  // Status: PENDING, ACCEPTED, REJECTED
+  status       String    @default("PENDING")
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  acceptedAt   DateTime?
+
+  @@unique([inviterId, inviteeEmail])
 }

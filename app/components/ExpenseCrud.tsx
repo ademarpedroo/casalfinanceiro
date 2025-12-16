@@ -66,13 +66,14 @@ interface ExpenseCrudProps {
   categories: Category[]
   cards?: Card[]
   transactions?: Transaction[]
+  currentUserId?: string
 }
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
 type PeriodFilter = 'all' | 'month'
 
-export default function ExpenseCrud({ expenses, categories, cards = [], transactions = [] }: ExpenseCrudProps) {
+export default function ExpenseCrud({ expenses, categories, cards = [], transactions = [], currentUserId }: ExpenseCrudProps) {
   const [searchFilter, setSearchFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'paid'>('all')
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('month')
@@ -214,6 +215,7 @@ export default function ExpenseCrud({ expenses, categories, cards = [], transact
         periodFilter={periodFilter}
         selectedMonth={selectedMonth}
         selectedYear={selectedYear}
+        currentUserId={currentUserId}
       />
     </CrudLayout>
   )

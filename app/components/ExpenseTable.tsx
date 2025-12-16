@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import Toast from './Toast'
 import ConfirmModal from './ConfirmModal'
+import PartnerBadge from './PartnerBadge'
 
 interface Category {
   id: string
@@ -47,6 +48,11 @@ interface Expense {
     color: string
     icon: string | null
   } | null
+  user?: {
+    id: string
+    name: string | null
+    image: string | null
+  }
 }
 
 interface Transaction {
@@ -118,6 +124,11 @@ interface UnifiedExpense {
   installmentsCount?: number
   transactionId?: string
   installmentId?: string
+  user?: {
+    id: string
+    name: string | null
+    image: string | null
+  }
 }
 
 interface ExpenseTableProps {
@@ -129,6 +140,7 @@ interface ExpenseTableProps {
   periodFilter?: 'all' | 'month'
   selectedMonth?: number
   selectedYear?: number
+  currentUserId?: string
 }
 
 export default function ExpenseTable({
@@ -140,6 +152,7 @@ export default function ExpenseTable({
   periodFilter = 'month',
   selectedMonth,
   selectedYear,
+  currentUserId = '',
 }: ExpenseTableProps) {
   const [isPending, startTransition] = useTransition()
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
@@ -191,6 +204,7 @@ export default function ExpenseTable({
     isFixed: exp.isFixed,
     category: exp.category,
     isCardExpense: false,
+    user: exp.user,
   }))
 
   // Combine and filter
@@ -539,6 +553,9 @@ export default function ExpenseTable({
                     <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">
                       Pago
                     </span>
+                  )}
+                  {exp.user && currentUserId && (
+                    <PartnerBadge user={exp.user} currentUserId={currentUserId} />
                   )}
                 </div>
               </div>

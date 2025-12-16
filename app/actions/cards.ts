@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { addMonths, setDate, startOfDay, parseISO } from 'date-fns'
 import { auth } from '@/auth'
+import { getPartnerIds } from './partnership'
 
 // --- Credit Card Management ---
 
@@ -66,9 +67,14 @@ export async function getCards() {
     return []
   }
 
+  const partnerIds = await getPartnerIds()
+
   return await prisma.creditCard.findMany({
-    where: { userId: session.user.id },
-    include: { transactions: true },
+    where: { userId: { in: partnerIds } },
+    include: {
+      transactions: true,
+      user: { select: { id: true, name: true, image: true } }
+    },
     orderBy: { createdAt: 'desc' }
   })
 }
@@ -278,7 +284,9 @@ export async function getUpcomingInstallments() {
       return []
     }
 
+    const partnerIds = await getPartnerIds()
     const today = startOfDay(new Date())
+
     return await prisma.installment.findMany({
         where: {
             dueDate: {
@@ -286,14 +294,18 @@ export async function getUpcomingInstallments() {
             },
             transaction: {
                 card: {
-                    userId: session.user.id
+                    userId: { in: partnerIds }
                 }
             }
         },
         include: {
             transaction: {
                 include: {
-                    card: true
+                    card: {
+                        include: {
+                            user: { select: { id: true, name: true, image: true } }
+                        }
+                    }
                 }
             }
         },
@@ -340,14 +352,20 @@ export async function getTransactions() {
     return []
   }
 
+  const partnerIds = await getPartnerIds()
+
   return await prisma.cardTransaction.findMany({
     where: {
       card: {
-        userId: session.user.id
+        userId: { in: partnerIds }
       }
     },
     include: {
-      card: true,
+      card: {
+        include: {
+          user: { select: { id: true, name: true, image: true } }
+        }
+      },
       category: true,
       installments: {
         orderBy: { number: 'asc' }
@@ -364,7 +382,9 @@ export async function markInstallmentAsPaid(installmentId: string) {
       return { error: 'Você precisa estar logado' }
     }
 
-    // Verify ownership through card
+    const partnerIds = await getPartnerIds()
+
+    // Verify ownership through card (own or partner's)
     const installment = await prisma.installment.findUnique({
       where: { id: installmentId },
       include: {
@@ -374,7 +394,7 @@ export async function markInstallmentAsPaid(installmentId: string) {
       }
     })
 
-    if (!installment || installment.transaction.card.userId !== session.user.id) {
+    if (!installment || !partnerIds.includes(installment.transaction.card.userId)) {
       return { error: 'Parcela não encontrada' }
     }
 
@@ -402,12 +422,14 @@ export async function markInvoiceAsPaid(cardId: string, month: number, year: num
       return { error: 'Você precisa estar logado' }
     }
 
-    // Verify card belongs to user
+    const partnerIds = await getPartnerIds()
+
+    // Verify card belongs to user or partner
     const card = await prisma.creditCard.findUnique({
       where: { id: cardId }
     })
 
-    if (!card || card.userId !== session.user.id) {
+    if (!card || !partnerIds.includes(card.userId)) {
       return { error: 'Cartão não encontrado' }
     }
 
@@ -453,11 +475,13 @@ export async function markInvoiceAsUnpaid(cardId: string, month: number, year: n
       return { error: 'Você precisa estar logado' }
     }
 
+    const partnerIds = await getPartnerIds()
+
     const card = await prisma.creditCard.findUnique({
       where: { id: cardId }
     })
 
-    if (!card || card.userId !== session.user.id) {
+    if (!card || !partnerIds.includes(card.userId)) {
       return { error: 'Cartão não encontrado' }
     }
 
@@ -501,6 +525,8 @@ export async function markInstallmentAsUnpaid(installmentId: string) {
       return { error: 'Você precisa estar logado' }
     }
 
+    const partnerIds = await getPartnerIds()
+
     const installment = await prisma.installment.findUnique({
       where: { id: installmentId },
       include: {
@@ -510,7 +536,7 @@ export async function markInstallmentAsUnpaid(installmentId: string) {
       }
     })
 
-    if (!installment || installment.transaction.card.userId !== session.user.id) {
+    if (!installment || !partnerIds.includes(installment.transaction.card.userId)) {
       return { error: 'Parcela não encontrada' }
     }
 

@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
+import { getPartnerIds } from './partnership'
 
 export async function createCategory(formData: FormData) {
   try {
@@ -47,8 +48,10 @@ export async function getCategories() {
     return []
   }
 
+  const partnerIds = await getPartnerIds()
+
   const categories = await prisma.category.findMany({
-    where: { userId: session.user.id },
+    where: { userId: { in: partnerIds } },
     orderBy: [
       { type: 'asc' },
       { name: 'asc' }
@@ -63,9 +66,11 @@ export async function getCategoriesByType(type: string) {
     return []
   }
 
+  const partnerIds = await getPartnerIds()
+
   const categories = await prisma.category.findMany({
     where: {
-      userId: session.user.id,
+      userId: { in: partnerIds },
       type
     },
     orderBy: { name: 'asc' },
@@ -80,13 +85,15 @@ export async function updateCategory(id: string, formData: FormData) {
       return { error: 'Voce precisa estar logado' }
     }
 
+    const partnerIds = await getPartnerIds()
+
     const name = formData.get('name') as string
     const color = formData.get('color') as string
     const icon = formData.get('icon') as string || null
 
-    // Verify category belongs to user
+    // Verify category belongs to user or partner (shared)
     const category = await prisma.category.findUnique({ where: { id } })
-    if (!category || category.userId !== session.user.id) {
+    if (!category || !partnerIds.includes(category.userId)) {
       return { error: 'Categoria nao encontrada' }
     }
 
@@ -114,9 +121,11 @@ export async function deleteCategory(id: string) {
       return { error: 'Voce precisa estar logado' }
     }
 
-    // Verify category belongs to user
+    const partnerIds = await getPartnerIds()
+
+    // Verify category belongs to user or partner (shared)
     const category = await prisma.category.findUnique({ where: { id } })
-    if (!category || category.userId !== session.user.id) {
+    if (!category || !partnerIds.includes(category.userId)) {
       return { error: 'Categoria nao encontrada' }
     }
 

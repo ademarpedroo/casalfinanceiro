@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { expenseSchema, parseFormData } from '@/lib/validations'
 import { auth } from '@/auth'
+import { getPartnerIds } from './partnership'
 
 export async function createExpense(data: FormData) {
   try {
@@ -18,16 +19,47 @@ export async function createExpense(data: FormData) {
       return { success: false, error: result.error }
     }
 
-    await prisma.expense.create({
-      data: {
-        userId: session.user.id,
-        description: result.data.description,
-        amount: result.data.amount,
-        dueDate: result.data.dueDate,
-        categoryId: result.data.categoryId || null,
-        isFixed: result.data.isFixed
+    // Se for despesa fixa, cria registros para os próximos 12 meses
+    if (result.data.isFixed) {
+      const fixedGroupId = crypto.randomUUID()
+      const baseDate = new Date(result.data.dueDate)
+      const day = baseDate.getDate()
+
+      const expensesToCreate = []
+
+      for (let i = 0; i < 12; i++) {
+        const newDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, 1)
+        // Ajusta o dia, considerando meses com menos dias
+        const lastDayOfMonth = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate()
+        newDate.setDate(Math.min(day, lastDayOfMonth))
+
+        expensesToCreate.push({
+          userId: session.user.id,
+          description: result.data.description,
+          amount: result.data.amount,
+          dueDate: newDate,
+          categoryId: result.data.categoryId || null,
+          isFixed: true,
+          fixedGroupId
+        })
       }
-    })
+
+      await prisma.expense.createMany({
+        data: expensesToCreate
+      })
+    } else {
+      // Despesa normal (não fixa)
+      await prisma.expense.create({
+        data: {
+          userId: session.user.id,
+          description: result.data.description,
+          amount: result.data.amount,
+          dueDate: result.data.dueDate,
+          categoryId: result.data.categoryId || null,
+          isFixed: false
+        }
+      })
+    }
 
     revalidatePath('/')
     return { success: true, message: 'Despesa cadastrada com sucesso!' }
@@ -43,13 +75,16 @@ export async function getExpenses() {
     return []
   }
 
+  const partnerIds = await getPartnerIds()
+
   return await prisma.expense.findMany({
     where: {
-      userId: session.user.id,
+      userId: { in: partnerIds },
       isPaid: false
     },
     include: {
-      category: true
+      category: true,
+      user: { select: { id: true, name: true, image: true } }
     },
     orderBy: { dueDate: 'asc' }
   })
@@ -62,9 +97,11 @@ export async function markExpenseAsPaid(id: string) {
       return { success: false, error: 'Voce precisa estar logado' }
     }
 
-    // Verify expense belongs to user
+    const partnerIds = await getPartnerIds()
+
+    // Verify expense belongs to user or partner
     const expense = await prisma.expense.findUnique({ where: { id } })
-    if (!expense || expense.userId !== session.user.id) {
+    if (!expense || !partnerIds.includes(expense.userId)) {
       return { success: false, error: 'Despesa nao encontrada' }
     }
 
@@ -88,10 +125,10 @@ export async function updateExpense(id: string, data: FormData) {
       return { success: false, error: 'Voce precisa estar logado' }
     }
 
-    // Verify expense belongs to user
+    // Somente o dono pode editar
     const expense = await prisma.expense.findUnique({ where: { id } })
     if (!expense || expense.userId !== session.user.id) {
-      return { success: false, error: 'Despesa nao encontrada' }
+      return { success: false, error: 'Voce so pode editar suas proprias despesas' }
     }
 
     const result = parseFormData(data, expenseSchema)
@@ -126,10 +163,10 @@ export async function deleteExpense(id: string) {
       return { success: false, error: 'Voce precisa estar logado' }
     }
 
-    // Verify expense belongs to user
+    // Somente o dono pode excluir
     const expense = await prisma.expense.findUnique({ where: { id } })
     if (!expense || expense.userId !== session.user.id) {
-      return { success: false, error: 'Despesa nao encontrada' }
+      return { success: false, error: 'Voce so pode excluir suas proprias despesas' }
     }
 
     await prisma.expense.delete({
@@ -151,10 +188,13 @@ export async function getAllExpenses() {
     return []
   }
 
+  const partnerIds = await getPartnerIds()
+
   return await prisma.expense.findMany({
-    where: { userId: session.user.id },
+    where: { userId: { in: partnerIds } },
     include: {
-      category: true
+      category: true,
+      user: { select: { id: true, name: true, image: true } }
     },
     orderBy: { dueDate: 'desc' }
   })
@@ -167,16 +207,19 @@ export async function getExpensesByDateRange(startDate: Date, endDate: Date) {
     return []
   }
 
+  const partnerIds = await getPartnerIds()
+
   return await prisma.expense.findMany({
     where: {
-      userId: session.user.id,
+      userId: { in: partnerIds },
       dueDate: {
         gte: startDate,
         lte: endDate
       }
     },
     include: {
-      category: true
+      category: true,
+      user: { select: { id: true, name: true, image: true } }
     },
     orderBy: { dueDate: 'desc' }
   })
@@ -189,12 +232,13 @@ export async function getExpensesCategorySummary(month: number, year: number) {
     return []
   }
 
+  const partnerIds = await getPartnerIds()
   const startDate = new Date(year, month - 1, 1)
   const endDate = new Date(year, month, 0, 23, 59, 59)
 
   const expenses = await prisma.expense.findMany({
     where: {
-      userId: session.user.id,
+      userId: { in: partnerIds },
       dueDate: {
         gte: startDate,
         lte: endDate

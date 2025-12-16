@@ -29,6 +29,7 @@ import Toast from './Toast'
 import ConfirmModal from './ConfirmModal'
 import AddCardTransactionForm from './AddCardTransactionForm'
 import EditTransactionModal from './EditTransactionModal'
+import PartnerBadge from './PartnerBadge'
 
 interface CreditCardType {
   id: string
@@ -40,6 +41,11 @@ interface CreditCardType {
   brand: string
   lastFourDigits?: string | null
   transactions?: any[]
+  user?: {
+    id: string
+    name: string | null
+    image: string | null
+  }
 }
 
 interface Category {
@@ -61,6 +67,11 @@ interface Transaction {
   card: CreditCardType
   category?: Category | null
   installments: Installment[]
+  user?: {
+    id: string
+    name: string | null
+    image: string | null
+  }
 }
 
 interface Installment {
@@ -127,9 +138,10 @@ interface CardCrudProps {
   cards: CreditCardType[]
   transactions?: Transaction[]
   categories?: Category[]
+  currentUserId?: string
 }
 
-export default function CardCrud({ cards, transactions = [], categories = [] }: CardCrudProps) {
+export default function CardCrud({ cards, transactions = [], categories = [], currentUserId = '' }: CardCrudProps) {
   const [isPending, startTransition] = useTransition()
   const [isCardDialogOpen, setIsCardDialogOpen] = useState(false)
   const [isTransactionDialogOpen, setIsTransactionDialogOpen] = useState(false)
@@ -775,7 +787,16 @@ export default function CardCrud({ cards, transactions = [], categories = [] }: 
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-xs text-white/60 uppercase tracking-wider">Nome</p>
-                        <p className="font-semibold text-lg">{card.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-lg">{card.name}</p>
+                          {card.user && currentUserId && (
+                            <div className="bg-white/20 rounded-full px-2 py-0.5">
+                              <span className="text-xs text-white/90">
+                                {card.user.id === currentUserId ? 'Você' : card.user.name || 'Parceiro'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div className="text-right">
                         <p className="text-2xl">{CARD_BRANDS[card.brand]?.icon || '💳'}</p>
@@ -964,9 +985,14 @@ export default function CardCrud({ cards, transactions = [], categories = [] }: 
                               </button>
                             </TableCell>
                             <TableCell>
-                              <span className={inst.isPaid ? 'text-gray-500 line-through' : 'font-medium'}>
-                                {inst.transaction?.description}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className={inst.isPaid ? 'text-gray-500 line-through' : 'font-medium'}>
+                                  {inst.transaction?.description}
+                                </span>
+                                {inst.transaction?.card?.user && currentUserId && (
+                                  <PartnerBadge user={inst.transaction.card.user} currentUserId={currentUserId} />
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>
                               {inst.transaction?.category ? (
@@ -1031,7 +1057,14 @@ export default function CardCrud({ cards, transactions = [], categories = [] }: 
                       const paidCount = transaction.installments.filter(i => i.isPaid).length
                       return (
                         <TableRow key={transaction.id}>
-                          <TableCell className="font-medium">{transaction.description}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{transaction.description}</span>
+                              {transaction.card?.user && currentUserId && (
+                                <PartnerBadge user={transaction.card.user} currentUserId={currentUserId} />
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell>
                             {transaction.category ? (
                               <span

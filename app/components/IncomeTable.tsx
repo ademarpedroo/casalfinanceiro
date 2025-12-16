@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select'
 import Toast from './Toast'
 import ConfirmModal from './ConfirmModal'
+import PartnerBadge from './PartnerBadge'
 
 interface Category {
   id: string
@@ -43,6 +44,11 @@ interface Income {
     color: string
     icon: string | null
   } | null
+  user?: {
+    id: string
+    name: string | null
+    image: string | null
+  }
 }
 
 function formatCurrency(value: number): string {
@@ -63,9 +69,10 @@ interface IncomeTableProps {
   incomes: Income[]
   categories?: Category[]
   searchFilter?: string
+  currentUserId?: string
 }
 
-export default function IncomeTable({ incomes, categories = [], searchFilter = '' }: IncomeTableProps) {
+export default function IncomeTable({ incomes, categories = [], searchFilter = '', currentUserId = '' }: IncomeTableProps) {
   const [isPending, startTransition] = useTransition()
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
@@ -310,6 +317,9 @@ export default function IncomeTable({ incomes, categories = [], searchFilter = '
                     <Calendar className="w-3 h-3 mr-1" />
                     {formatDate(inc.date)}
                   </span>
+                  {inc.user && currentUserId && (
+                    <PartnerBadge user={inc.user} currentUserId={currentUserId} />
+                  )}
                 </div>
               </div>
             </div>

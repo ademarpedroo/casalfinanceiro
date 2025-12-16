@@ -11,6 +11,7 @@ import {
   LogOut,
   Heart,
   FileText,
+  Users,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -39,6 +40,7 @@ const menuItems = [
 
 const accountItems = [
   { title: 'Perfil', icon: User, url: '#profile' },
+  { title: 'Parceria', icon: Users, url: '#parceria' },
 ]
 
 interface AppSidebarProps {
@@ -47,9 +49,15 @@ interface AppSidebarProps {
     email?: string | null
     image?: string | null
   }
+  partnerInfo?: {
+    id: string
+    name: string | null
+    email: string | null
+    image: string | null
+  } | null
 }
 
-export function AppSidebar({ user }: AppSidebarProps) {
+export function AppSidebar({ user, partnerInfo }: AppSidebarProps) {
   const getInitials = (name?: string | null, email?: string | null) => {
     if (name) {
       return name
@@ -146,6 +154,25 @@ export function AppSidebar({ user }: AppSidebarProps) {
       </SidebarContent>
 
       <SidebarFooter className="p-4">
+        {/* Mostra parceiro se houver */}
+        {partnerInfo && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-pink-500/30 rounded-xl backdrop-blur-sm mb-2">
+            <Avatar className="h-8 w-8 border-2 border-pink-300/50">
+              <AvatarImage src={partnerInfo.image || undefined} />
+              <AvatarFallback className="bg-pink-400/50 text-white text-xs font-medium">
+                {getInitials(partnerInfo.name, partnerInfo.email)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-white/80 truncate">
+                Parceiro(a)
+              </p>
+              <p className="text-sm font-medium text-white truncate">
+                {partnerInfo.name || partnerInfo.email || 'Parceiro'}
+              </p>
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-3 px-3 py-3 bg-white/10 rounded-xl backdrop-blur-sm">
           <Avatar className="h-10 w-10 border-2 border-white/20">
             <AvatarImage src={user.image || undefined} />
