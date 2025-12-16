@@ -149,7 +149,7 @@ export default function EditTransactionModal({ transaction, isOpen, onClose, cat
         description,
         totalAmount: parseFloat(totalAmount),
         installmentsCount,
-        categoryId: selectedCategory || null,
+        categoryId: selectedCategory && selectedCategory !== '_none' ? selectedCategory : null,
         firstInvoiceMonth: firstInvoiceDate.getMonth(),
         firstInvoiceYear: firstInvoiceDate.getFullYear(),
         paidInstallmentsCount: paidInstallments
@@ -239,7 +239,7 @@ export default function EditTransactionModal({ transaction, isOpen, onClose, cat
                     <SelectValue placeholder="Selecione (opcional)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Sem categoria</SelectItem>
+                    <SelectItem value="_none">Sem categoria</SelectItem>
                     {expenseCategories.map((cat) => (
                       <SelectItem key={cat.id} value={cat.id}>
                         <div className="flex items-center gap-2">

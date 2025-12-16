@@ -165,7 +165,7 @@ export default function AddCardTransactionForm({ cards, categories = [], onSucce
     formData.set('cardId', selectedCard)
     formData.set('installments', selectedInstallments.toString())
     formData.set('paidInstallments', paidInstallments.toString())
-    if (selectedCategory) {
+    if (selectedCategory && selectedCategory !== '_none') {
       formData.set('categoryId', selectedCategory)
     }
 
@@ -275,7 +275,7 @@ export default function AddCardTransactionForm({ cards, categories = [], onSucce
                 <SelectValue placeholder="Selecione (opcional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Sem categoria</SelectItem>
+                <SelectItem value="_none">Sem categoria</SelectItem>
                 {expenseCategories.map((cat) => (
                   <SelectItem key={cat.id} value={cat.id}>
                     <div className="flex items-center gap-2">

@@ -118,7 +118,7 @@ export default function IncomeTable({ incomes, categories = [], searchFilter = '
       formData.set('description', editDescription)
       formData.set('amount', editAmount)
       formData.set('date', editDate.toISOString())
-      if (editCategory) {
+      if (editCategory && editCategory !== '_none') {
         formData.set('categoryId', editCategory)
       }
 
@@ -213,7 +213,7 @@ export default function IncomeTable({ incomes, categories = [], searchFilter = '
                     <SelectValue placeholder="Selecione (opcional)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Sem categoria</SelectItem>
+                    <SelectItem value="_none">Sem categoria</SelectItem>
                     {incomeCategories.map((cat) => (
                       <SelectItem key={cat.id} value={cat.id}>
                         <div className="flex items-center gap-2">

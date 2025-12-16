@@ -11,14 +11,42 @@ interface Budget {
   spent: number
 }
 
+interface Installment {
+  amount: number
+  dueDate: Date
+  isPaid: boolean
+}
+
+interface Transaction {
+  installments: Installment[]
+}
+
 export function calculateKPIs(
   incomes: Income[],
   expenses: Expense[],
-  budgets: Array<Budget & { percentage: number }>
+  budgets: Array<Budget & { percentage: number }>,
+  transactions: Transaction[] = [],
+  currentMonth?: number,
+  currentYear?: number
 ) {
   const totalIncome = incomes.reduce((sum, income) => sum + income.amount, 0)
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0)
-  const balance = totalIncome - totalExpenses
+
+  // Calculate card installments for the current month
+  let cardExpenses = 0
+  if (currentMonth && currentYear) {
+    transactions.forEach(transaction => {
+      transaction.installments.forEach(installment => {
+        const dueDate = new Date(installment.dueDate)
+        if (dueDate.getMonth() + 1 === currentMonth && dueDate.getFullYear() === currentYear) {
+          cardExpenses += installment.amount
+        }
+      })
+    })
+  }
+
+  const totalAllExpenses = totalExpenses + cardExpenses
+  const balance = totalIncome - totalAllExpenses
 
   // Calculate average budget usage
   const budgetUsage =
@@ -28,7 +56,7 @@ export function calculateKPIs(
 
   return {
     totalIncome,
-    totalExpenses,
+    totalExpenses: totalAllExpenses,
     balance,
     budgetUsage,
   }

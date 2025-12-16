@@ -73,8 +73,8 @@ export default async function Home() {
     getCategoriesWithoutBudget(currentMonth, currentYear)
   ])
 
-  // Calculate KPIs
-  const kpis = calculateKPIs(incomes, expenses, budgets)
+  // Calculate KPIs (including card installments for current month)
+  const kpis = calculateKPIs(incomes, expenses, budgets, transactions, currentMonth, currentYear)
 
   return (
     <>

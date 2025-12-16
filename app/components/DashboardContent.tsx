@@ -790,7 +790,18 @@ export default function DashboardContent({
   // Seção de Perfil
   if (activeSection === 'profile') {
     const totalIncomes = incomes.reduce((sum, inc) => sum + inc.amount, 0)
-    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0)
+    const regularExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0)
+    // Inclui parcelas de cartão do mês atual
+    const cardExpenses = transactions.reduce((sum: number, t: any) => {
+      return sum + t.installments.reduce((instSum: number, inst: any) => {
+        const dueDate = new Date(inst.dueDate)
+        if (dueDate.getMonth() + 1 === currentMonth && dueDate.getFullYear() === currentYear) {
+          return instSum + inst.amount
+        }
+        return instSum
+      }, 0)
+    }, 0)
+    const totalExpenses = regularExpenses + cardExpenses
     const balance = totalIncomes - totalExpenses
     const memberSince = user.createdAt ? new Date(user.createdAt).toLocaleDateString('pt-BR', {
       day: '2-digit',
