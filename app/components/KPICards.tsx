@@ -21,65 +21,56 @@ export default function KPICards({ totalIncome, totalExpenses, balance, budgetUs
       title: 'Total de Receitas',
       value: totalIncome,
       icon: TrendingUp,
-      trend: '+15.3%',
-      trendUp: true,
-      bgColor: 'bg-gradient-to-br from-green-500 to-green-600',
-      iconBg: 'bg-white/20',
+      color: 'text-emerald-600',
+      bgIcon: 'bg-emerald-100',
+      borderColor: 'border-l-emerald-500',
     },
     {
       title: 'Total de Despesas',
       value: totalExpenses,
       icon: TrendingDown,
-      trend: '+8.2%',
-      trendUp: false,
-      bgColor: 'bg-gradient-to-br from-orange-500 to-orange-600',
-      iconBg: 'bg-white/20',
+      color: 'text-rose-600',
+      bgIcon: 'bg-rose-100',
+      borderColor: 'border-l-rose-500',
     },
     {
       title: 'Saldo Atual',
       value: balance,
       icon: DollarSign,
-      trend: '+12.5%',
-      trendUp: true,
-      bgColor: 'bg-gradient-to-br from-blue-500 to-blue-600',
-      iconBg: 'bg-white/20',
+      color: balance >= 0 ? 'text-indigo-600' : 'text-rose-600',
+      bgIcon: balance >= 0 ? 'bg-indigo-100' : 'bg-rose-100',
+      borderColor: balance >= 0 ? 'border-l-indigo-500' : 'border-l-rose-500',
     },
     {
       title: 'Orçamento Utilizado',
       value: budgetUsage,
       icon: PieChart,
-      trend: `${budgetUsage.toFixed(1)}%`,
-      trendUp: budgetUsage < 80,
-      bgColor: 'bg-gradient-to-br from-purple-500 to-purple-600',
-      iconBg: 'bg-white/20',
+      color: budgetUsage < 80 ? 'text-purple-600' : 'text-amber-600',
+      bgIcon: budgetUsage < 80 ? 'bg-purple-100' : 'bg-amber-100',
+      borderColor: budgetUsage < 80 ? 'border-l-purple-500' : 'border-l-amber-500',
       isPercentage: true,
     },
   ]
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {kpiData.map((kpi, index) => (
         <Card
           key={index}
-          className={`${kpi.bgColor} text-white border-0 shadow-lg hover:shadow-xl transition-shadow`}
+          className={`bg-white border-l-4 ${kpi.borderColor} shadow-sm hover:shadow-md transition-shadow`}
         >
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className={`${kpi.iconBg} p-3 rounded-lg`}>
-                <kpi.icon className="w-6 h-6" />
+          <div className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500 mb-1">{kpi.title}</p>
+                <p className={`text-2xl font-bold ${kpi.color}`}>
+                  {kpi.isPercentage ? `${kpi.value.toFixed(1)}%` : formatCurrency(kpi.value)}
+                </p>
               </div>
-              <span
-                className={`text-sm font-medium px-2 py-1 rounded-full ${
-                  kpi.trendUp ? 'bg-white/20' : 'bg-black/20'
-                }`}
-              >
-                {kpi.trend}
-              </span>
+              <div className={`${kpi.bgIcon} p-3 rounded-xl`}>
+                <kpi.icon className={`w-6 h-6 ${kpi.color}`} />
+              </div>
             </div>
-            <h3 className="text-sm font-medium opacity-90 mb-1">{kpi.title}</h3>
-            <p className="text-2xl font-bold">
-              {kpi.isPercentage ? `${kpi.value.toFixed(1)}%` : formatCurrency(kpi.value)}
-            </p>
           </div>
         </Card>
       ))}

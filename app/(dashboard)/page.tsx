@@ -41,7 +41,7 @@ export default async function Home() {
   return (
     <>
       <AppSidebar user={session.user} />
-      <SidebarInset className="flex flex-col min-h-screen">
+      <SidebarInset className="flex flex-col min-h-screen bg-gray-50">
         <Navbar user={session.user} />
         <main className="flex-1 p-6">
           <DashboardContent
