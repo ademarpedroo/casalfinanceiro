@@ -100,7 +100,7 @@ export default function AddCardTransactionForm({ cards, categories = [], onSucce
   const [customFirstInvoiceDate, setCustomFirstInvoiceDate] = useState<Date | undefined>(undefined)
   const [selectedCategory, setSelectedCategory] = useState<string>('')
 
-  const expenseCategories = categories.filter(c => c.type === 'expense')
+  const expenseCategories = categories.filter(c => c.type === 'EXPENSE')
 
   const card = cards.find(c => c.id === selectedCard)
 

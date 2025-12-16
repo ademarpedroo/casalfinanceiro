@@ -169,7 +169,7 @@ export default function EditTransactionModal({ transaction, isOpen, onClose, cat
   if (!transaction) return null
 
   // Filter categories to only show expense type
-  const expenseCategories = categories.filter(c => c.type === 'expense')
+  const expenseCategories = categories.filter(c => c.type === 'EXPENSE')
 
   return (
     <>

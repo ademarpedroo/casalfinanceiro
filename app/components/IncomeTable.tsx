@@ -78,7 +78,7 @@ export default function IncomeTable({ incomes, categories = [], searchFilter = '
   const [editDate, setEditDate] = useState<Date | undefined>(undefined)
   const [editCategory, setEditCategory] = useState('')
 
-  const incomeCategories = categories.filter(c => c.type === 'income')
+  const incomeCategories = categories.filter(c => c.type === 'INCOME')
 
   const filteredIncomes = incomes.filter(inc =>
     inc.description.toLowerCase().includes(searchFilter.toLowerCase()) ||

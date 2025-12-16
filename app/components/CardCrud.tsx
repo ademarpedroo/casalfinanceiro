@@ -941,6 +941,7 @@ export default function CardCrud({ cards, transactions = [], categories = [] }: 
                         <TableRow className="bg-gray-50/50">
                           <TableHead className="w-12">Pago</TableHead>
                           <TableHead>Descricao</TableHead>
+                          <TableHead>Categoria</TableHead>
                           <TableHead>Parcela</TableHead>
                           <TableHead>Vencimento</TableHead>
                           <TableHead className="text-right">Valor</TableHead>
@@ -966,6 +967,21 @@ export default function CardCrud({ cards, transactions = [], categories = [] }: 
                               <span className={inst.isPaid ? 'text-gray-500 line-through' : 'font-medium'}>
                                 {inst.transaction?.description}
                               </span>
+                            </TableCell>
+                            <TableCell>
+                              {inst.transaction?.category ? (
+                                <span
+                                  className="text-xs font-medium px-2 py-0.5 rounded-full"
+                                  style={{
+                                    backgroundColor: `${inst.transaction.category.color}15`,
+                                    color: inst.transaction.category.color,
+                                  }}
+                                >
+                                  {inst.transaction.category.icon}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-400">-</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               <Badge variant="secondary" className="font-mono">
@@ -1002,6 +1018,7 @@ export default function CardCrud({ cards, transactions = [], categories = [] }: 
                   <TableHeader>
                     <TableRow className="bg-gray-50/50">
                       <TableHead>Descricao</TableHead>
+                      <TableHead>Categoria</TableHead>
                       <TableHead>Cartao</TableHead>
                       <TableHead>Data</TableHead>
                       <TableHead>Parcelas</TableHead>
@@ -1015,6 +1032,21 @@ export default function CardCrud({ cards, transactions = [], categories = [] }: 
                       return (
                         <TableRow key={transaction.id}>
                           <TableCell className="font-medium">{transaction.description}</TableCell>
+                          <TableCell>
+                            {transaction.category ? (
+                              <span
+                                className="text-xs font-medium px-2 py-1 rounded-full"
+                                style={{
+                                  backgroundColor: `${transaction.category.color}15`,
+                                  color: transaction.category.color,
+                                }}
+                              >
+                                {transaction.category.icon} {transaction.category.name}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-400">-</span>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <div
