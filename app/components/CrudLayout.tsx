@@ -34,6 +34,7 @@ interface CrudLayoutProps {
   createForm: ReactNode
   children: ReactNode
   accentColor?: string
+  extraFilters?: ReactNode
 }
 
 export default function CrudLayout({
@@ -50,6 +51,7 @@ export default function CrudLayout({
   createForm,
   children,
   accentColor = '#8B5CF6',
+  extraFilters,
 }: CrudLayoutProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [localSearch, setLocalSearch] = useState(searchValue || '')
@@ -131,6 +133,9 @@ export default function CrudLayout({
           </TabsList>
         </Tabs>
       )}
+
+      {/* Extra Filters */}
+      {extraFilters}
 
       {/* Content (Table) */}
       <div className="bg-white rounded-lg border border-gray-200">

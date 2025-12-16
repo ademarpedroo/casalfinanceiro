@@ -105,13 +105,19 @@ interface ExpenseTableProps {
   transactions?: Transaction[]
   searchFilter?: string
   statusFilter?: 'all' | 'pending' | 'paid'
+  periodFilter?: 'all' | 'month'
+  selectedMonth?: number
+  selectedYear?: number
 }
 
 export default function ExpenseTable({
   expenses,
   transactions = [],
   searchFilter = '',
-  statusFilter = 'all'
+  statusFilter = 'all',
+  periodFilter = 'month',
+  selectedMonth,
+  selectedYear,
 }: ExpenseTableProps) {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
@@ -119,16 +125,14 @@ export default function ExpenseTable({
   const [sortField, setSortField] = useState<'description' | 'amount' | 'dueDate'>('dueDate')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
-  // Get current month's installments from transactions
-  const now = new Date()
-  const currentMonth = now.getMonth()
-  const currentYear = now.getFullYear()
-
+  // Get installments from transactions (filtered by period if needed)
   const cardInstallments: UnifiedExpense[] = transactions.flatMap(t =>
     t.installments
       .filter(inst => {
+        if (periodFilter === 'all') return true
+        if (selectedMonth === undefined || selectedYear === undefined) return true
         const dueDate = new Date(inst.dueDate)
-        return dueDate.getMonth() === currentMonth && dueDate.getFullYear() === currentYear
+        return dueDate.getMonth() === selectedMonth && dueDate.getFullYear() === selectedYear
       })
       .map(inst => ({
         id: `card-${inst.id}`,
