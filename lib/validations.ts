@@ -19,12 +19,12 @@ export const expenseSchema = z.object({
 
 // Category validation
 export const categorySchema = z.object({
-  name: z.string().min(1, 'Nome é obrigatório').max(50, 'Nome muito longo'),
-  type: z.enum(['INCOME', 'EXPENSE'], {
-    errorMap: () => ({ message: 'Tipo deve ser INCOME ou EXPENSE' })
+  name: z.string().min(1, 'Nome e obrigatorio').max(50, 'Nome muito longo'),
+  type: z.enum(['INCOME', 'EXPENSE'] as const, {
+    message: 'Tipo deve ser INCOME ou EXPENSE'
   }),
-  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor inválida (use formato #RRGGBB)').default('#3b82f6'),
-  icon: z.string().max(2, 'Ícone deve ter no máximo 2 caracteres').optional(),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor invalida (use formato #RRGGBB)').default('#3b82f6'),
+  icon: z.string().max(2, 'Icone deve ter no maximo 2 caracteres').optional(),
 })
 
 // Credit Card validation
@@ -95,9 +95,9 @@ export function parseFormData<T>(
     return { success: true, data: result }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const firstError = error.errors[0]
+      const firstError = error.issues[0]
       return { success: false, error: firstError.message }
     }
-    return { success: false, error: 'Erro de validação desconhecido' }
+    return { success: false, error: 'Erro de validacao desconhecido' }
   }
 }

@@ -2,27 +2,53 @@
 
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import { auth } from '@/auth'
 
 export async function createCategory(formData: FormData) {
-  const name = formData.get('name') as string
-  const type = formData.get('type') as string
-  const color = formData.get('color') as string || '#3b82f6'
-  const icon = formData.get('icon') as string || null
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { error: 'Voce precisa estar logado para criar uma categoria' }
+    }
 
-  await prisma.category.create({
-    data: {
-      name,
-      type,
-      color,
-      icon,
-    },
-  })
+    const name = formData.get('name') as string
+    const type = formData.get('type') as string
+    const color = formData.get('color') as string || '#3b82f6'
+    const icon = formData.get('icon') as string || null
 
-  revalidatePath('/')
+    if (!name || name.trim().length === 0) {
+      return { error: 'Nome da categoria e obrigatorio' }
+    }
+    if (!type || (type !== 'INCOME' && type !== 'EXPENSE')) {
+      return { error: 'Tipo invalido' }
+    }
+
+    await prisma.category.create({
+      data: {
+        userId: session.user.id,
+        name: name.trim(),
+        type,
+        color,
+        icon,
+      },
+    })
+
+    revalidatePath('/')
+    return { success: true, message: 'Categoria criada com sucesso!' }
+  } catch (error) {
+    console.error('Error creating category:', error)
+    return { error: 'Erro ao criar categoria. Tente novamente.' }
+  }
 }
 
 export async function getCategories() {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return []
+  }
+
   const categories = await prisma.category.findMany({
+    where: { userId: session.user.id },
     orderBy: [
       { type: 'asc' },
       { name: 'asc' }
@@ -32,39 +58,81 @@ export async function getCategories() {
 }
 
 export async function getCategoriesByType(type: string) {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return []
+  }
+
   const categories = await prisma.category.findMany({
-    where: { type },
+    where: {
+      userId: session.user.id,
+      type
+    },
     orderBy: { name: 'asc' },
   })
   return categories
 }
 
 export async function updateCategory(id: string, formData: FormData) {
-  const name = formData.get('name') as string
-  const color = formData.get('color') as string
-  const icon = formData.get('icon') as string || null
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { error: 'Voce precisa estar logado' }
+    }
 
-  await prisma.category.update({
-    where: { id },
-    data: {
-      name,
-      color,
-      icon,
-    },
-  })
+    const name = formData.get('name') as string
+    const color = formData.get('color') as string
+    const icon = formData.get('icon') as string || null
 
-  revalidatePath('/')
+    // Verify category belongs to user
+    const category = await prisma.category.findUnique({ where: { id } })
+    if (!category || category.userId !== session.user.id) {
+      return { error: 'Categoria nao encontrada' }
+    }
+
+    await prisma.category.update({
+      where: { id },
+      data: {
+        name,
+        color,
+        icon,
+      },
+    })
+
+    revalidatePath('/')
+    return { success: true, message: 'Categoria atualizada!' }
+  } catch (error) {
+    console.error('Error updating category:', error)
+    return { error: 'Erro ao atualizar categoria' }
+  }
 }
 
 export async function deleteCategory(id: string) {
-  await prisma.category.delete({
-    where: { id },
-  })
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { error: 'Voce precisa estar logado' }
+    }
 
-  revalidatePath('/')
+    // Verify category belongs to user
+    const category = await prisma.category.findUnique({ where: { id } })
+    if (!category || category.userId !== session.user.id) {
+      return { error: 'Categoria nao encontrada' }
+    }
+
+    await prisma.category.delete({
+      where: { id },
+    })
+
+    revalidatePath('/')
+    return { success: true, message: 'Categoria excluida!' }
+  } catch (error) {
+    console.error('Error deleting category:', error)
+    return { error: 'Erro ao excluir categoria' }
+  }
 }
 
-// Função para criar categorias padrão para um usuário
+// Funcao para criar categorias padrao para um usuario
 export async function seedDefaultCategories(userId: string) {
   // Check if user already has categories
   const existingCategories = await prisma.category.count({
@@ -77,17 +145,17 @@ export async function seedDefaultCategories(userId: string) {
 
   const defaultCategories = [
     // Receitas
-    { name: 'Salário', type: 'INCOME', color: '#10b981', icon: '💰', userId },
+    { name: 'Salario', type: 'INCOME', color: '#10b981', icon: '💰', userId },
     { name: 'Freelance', type: 'INCOME', color: '#3b82f6', icon: '💼', userId },
     { name: 'Investimentos', type: 'INCOME', color: '#8b5cf6', icon: '📈', userId },
     { name: 'Outros', type: 'INCOME', color: '#6366f1', icon: '💵', userId },
 
     // Despesas
     { name: 'Moradia', type: 'EXPENSE', color: '#ef4444', icon: '🏠', userId },
-    { name: 'Alimentação', type: 'EXPENSE', color: '#f59e0b', icon: '🍽️', userId },
+    { name: 'Alimentacao', type: 'EXPENSE', color: '#f59e0b', icon: '🍽️', userId },
     { name: 'Transporte', type: 'EXPENSE', color: '#06b6d4', icon: '🚗', userId },
-    { name: 'Saúde', type: 'EXPENSE', color: '#ec4899', icon: '⚕️', userId },
-    { name: 'Educação', type: 'EXPENSE', color: '#8b5cf6', icon: '📚', userId },
+    { name: 'Saude', type: 'EXPENSE', color: '#ec4899', icon: '⚕️', userId },
+    { name: 'Educacao', type: 'EXPENSE', color: '#8b5cf6', icon: '📚', userId },
     { name: 'Lazer', type: 'EXPENSE', color: '#f43f5e', icon: '🎮', userId },
     { name: 'Contas', type: 'EXPENSE', color: '#64748b', icon: '📄', userId },
     { name: 'Roupas', type: 'EXPENSE', color: '#a855f7', icon: '👕', userId },
