@@ -154,6 +154,8 @@ model Installment {
   number        Int
   amount        Float
   dueDate       DateTime
+  isPaid        Boolean         @default(false)
+  paidAt        DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   transaction   CardTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)

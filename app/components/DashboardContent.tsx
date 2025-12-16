@@ -524,7 +524,7 @@ export default function DashboardContent({
   if (activeSection === 'despesas') {
     return (
       <>
-        <ExpenseCrud expenses={expenses} categories={categories} />
+        <ExpenseCrud expenses={expenses} categories={categories} cards={cards} transactions={transactions} />
         <FloatingActionButton categories={categories} />
       </>
     )
@@ -534,7 +534,7 @@ export default function DashboardContent({
   if (activeSection === 'cartoes') {
     return (
       <>
-        <CardCrud cards={cards} />
+        <CardCrud cards={cards} transactions={transactions} />
         <FloatingActionButton categories={categories} />
       </>
     )

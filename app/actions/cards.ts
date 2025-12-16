@@ -321,8 +321,136 @@ export async function getTransactions() {
     },
     include: {
       card: true,
-      installments: true
+      installments: {
+        orderBy: { number: 'asc' }
+      }
     },
     orderBy: { purchaseDate: 'desc' }
   })
+}
+
+export async function markInstallmentAsPaid(installmentId: string) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { error: 'Você precisa estar logado' }
+    }
+
+    // Verify ownership through card
+    const installment = await prisma.installment.findUnique({
+      where: { id: installmentId },
+      include: {
+        transaction: {
+          include: { card: true }
+        }
+      }
+    })
+
+    if (!installment || installment.transaction.card.userId !== session.user.id) {
+      return { error: 'Parcela não encontrada' }
+    }
+
+    await prisma.installment.update({
+      where: { id: installmentId },
+      data: {
+        isPaid: true,
+        paidAt: new Date()
+      }
+    })
+
+    revalidatePath('/')
+    return { success: true, message: 'Parcela marcada como paga!' }
+  } catch (error) {
+    console.error('Error marking installment as paid:', error)
+    return { error: 'Erro ao marcar parcela como paga' }
+  }
+}
+
+export async function markInstallmentAsUnpaid(installmentId: string) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { error: 'Você precisa estar logado' }
+    }
+
+    const installment = await prisma.installment.findUnique({
+      where: { id: installmentId },
+      include: {
+        transaction: {
+          include: { card: true }
+        }
+      }
+    })
+
+    if (!installment || installment.transaction.card.userId !== session.user.id) {
+      return { error: 'Parcela não encontrada' }
+    }
+
+    await prisma.installment.update({
+      where: { id: installmentId },
+      data: {
+        isPaid: false,
+        paidAt: null
+      }
+    })
+
+    revalidatePath('/')
+    return { success: true, message: 'Parcela desmarcada!' }
+  } catch (error) {
+    console.error('Error unmarking installment:', error)
+    return { error: 'Erro ao desmarcar parcela' }
+  }
+}
+
+// Get card invoice for a specific month/year
+export async function getCardInvoice(cardId: string, month: number, year: number) {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return null
+  }
+
+  const card = await prisma.creditCard.findUnique({
+    where: { id: cardId }
+  })
+
+  if (!card || card.userId !== session.user.id) {
+    return null
+  }
+
+  // Get installments that are due in the given month/year for this card
+  const startDate = new Date(year, month - 1, 1)
+  const endDate = new Date(year, month, 0, 23, 59, 59)
+
+  const installments = await prisma.installment.findMany({
+    where: {
+      transaction: {
+        cardId: cardId
+      },
+      dueDate: {
+        gte: startDate,
+        lte: endDate
+      }
+    },
+    include: {
+      transaction: true
+    },
+    orderBy: {
+      dueDate: 'asc'
+    }
+  })
+
+  const total = installments.reduce((sum, inst) => sum + inst.amount, 0)
+  const totalPaid = installments.filter(i => i.isPaid).reduce((sum, inst) => sum + inst.amount, 0)
+  const totalPending = total - totalPaid
+
+  return {
+    card,
+    month,
+    year,
+    installments,
+    total,
+    totalPaid,
+    totalPending,
+    dueDay: card.dueDay
+  }
 }

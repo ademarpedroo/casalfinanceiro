@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { createCard, deleteCard } from '@/app/actions/cards'
+import { createCard, deleteCard, deleteTransaction, markInstallmentAsPaid, markInstallmentAsUnpaid } from '@/app/actions/cards'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Card } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -15,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
@@ -23,10 +24,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Plus, Trash2, Search, CreditCard, Loader2, ArrowUpDown } from 'lucide-react'
+import { Plus, Trash2, Search, CreditCard, Loader2, ArrowUpDown, ShoppingCart, Receipt, ChevronLeft, ChevronRight, Check, X } from 'lucide-react'
 import Toast from './Toast'
+import AddCardTransactionForm from './AddCardTransactionForm'
 
-interface Card {
+interface CreditCardType {
   id: string
   name: string
   limit: number
@@ -38,7 +40,47 @@ interface Card {
   transactions?: any[]
 }
 
-const CARD_COLORS = [
+interface Transaction {
+  id: string
+  cardId: string
+  description: string
+  totalAmount: number
+  purchaseDate: Date
+  installmentsCount: number
+  card: CreditCardType
+  installments: Installment[]
+}
+
+interface Installment {
+  id: string
+  transactionId: string
+  number: number
+  amount: number
+  dueDate: Date
+  isPaid: boolean
+  paidAt?: Date | null
+  transaction?: Transaction
+}
+
+const CARD_COLORS: Record<string, string> = {
+  nubank: '#820AD1',
+  inter: '#FF7A00',
+  c6blue: '#1F51AC',
+  black: '#1A1A1A',
+  platinum: '#C0C0C0',
+  gold: '#D4AF37',
+  red: '#D32F2F',
+  graphite: '#424242',
+}
+
+const CARD_BRANDS: Record<string, { label: string; icon: string }> = {
+  mastercard: { label: 'Mastercard', icon: '🔴🟡' },
+  visa: { label: 'Visa', icon: '💳' },
+  elo: { label: 'Elo', icon: '🟡' },
+  amex: { label: 'American Express', icon: '💠' },
+}
+
+const CARD_COLOR_OPTIONS = [
   { value: 'nubank', label: 'Roxo Nubank', color: '#820AD1' },
   { value: 'inter', label: 'Laranja Inter', color: '#FF7A00' },
   { value: 'c6blue', label: 'Azul C6', color: '#1F51AC' },
@@ -49,7 +91,7 @@ const CARD_COLORS = [
   { value: 'graphite', label: 'Cinza Grafite', color: '#424242' },
 ]
 
-const CARD_BRANDS = [
+const CARD_BRAND_OPTIONS = [
   { value: 'mastercard', label: 'Mastercard', icon: '🔴🟡' },
   { value: 'visa', label: 'Visa', icon: '💳' },
   { value: 'elo', label: 'Elo', icon: '🟡' },
@@ -63,37 +105,54 @@ function formatCurrency(value: number): string {
   }).format(value)
 }
 
-function getCardColor(colorValue: string): string {
-  return CARD_COLORS.find(c => c.value === colorValue)?.color || '#820AD1'
+function formatDate(date: Date | string): string {
+  return new Date(date).toLocaleDateString('pt-BR')
 }
 
-function getBrandIcon(brandValue: string): string {
-  return CARD_BRANDS.find(b => b.value === brandValue)?.icon || '💳'
-}
-
-function getBrandLabel(brandValue: string): string {
-  return CARD_BRANDS.find(b => b.value === brandValue)?.label || 'Outro'
-}
+const MONTHS = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
 interface CardCrudProps {
-  cards: Card[]
+  cards: CreditCardType[]
+  transactions?: Transaction[]
 }
 
-export default function CardCrud({ cards }: CardCrudProps) {
+export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
   const [isPending, startTransition] = useTransition()
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isCardDialogOpen, setIsCardDialogOpen] = useState(false)
+  const [isTransactionDialogOpen, setIsTransactionDialogOpen] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [searchFilter, setSearchFilter] = useState('')
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [selectedColor, setSelectedColor] = useState('nubank')
   const [selectedBrand, setSelectedBrand] = useState('mastercard')
+  const [activeTab, setActiveTab] = useState('cartoes')
+
+  // Invoice state
+  const now = new Date()
+  const [invoiceMonth, setInvoiceMonth] = useState(now.getMonth() + 1)
+  const [invoiceYear, setInvoiceYear] = useState(now.getFullYear())
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(cards[0]?.id || null)
 
   const filteredCards = cards.filter(card =>
     card.name.toLowerCase().includes(searchFilter.toLowerCase())
   )
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  // Get installments for invoice
+  const selectedCard = cards.find(c => c.id === selectedCardId)
+  const invoiceInstallments = transactions
+    .filter(t => t.cardId === selectedCardId)
+    .flatMap(t => t.installments.map(inst => ({ ...inst, transaction: t })))
+    .filter(inst => {
+      const dueDate = new Date(inst.dueDate)
+      return dueDate.getMonth() + 1 === invoiceMonth && dueDate.getFullYear() === invoiceYear
+    })
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+
+  const invoiceTotal = invoiceInstallments.reduce((sum, inst) => sum + inst.amount, 0)
+  const invoicePaid = invoiceInstallments.filter(i => i.isPaid).reduce((sum, inst) => sum + inst.amount, 0)
+  const invoicePending = invoiceTotal - invoicePaid
+
+  async function handleCreateCard(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     formData.set('color', selectedColor)
@@ -103,7 +162,7 @@ export default function CardCrud({ cards }: CardCrudProps) {
       const result = await createCard(formData)
       if (result?.success) {
         setToast({ message: result.message!, type: 'success' })
-        setIsDialogOpen(false)
+        setIsCardDialogOpen(false)
         setSelectedColor('nubank')
         setSelectedBrand('mastercard')
       } else {
@@ -112,10 +171,26 @@ export default function CardCrud({ cards }: CardCrudProps) {
     })
   }
 
-  async function handleDelete(id: string, name: string) {
+  async function handleDeleteCard(id: string, name: string) {
     if (confirm(`Excluir cartao "${name}"? Todas as transacoes serao removidas.`)) {
       setDeletingId(id)
       const result = await deleteCard(id)
+      if (result?.success) {
+        setToast({ message: result.message!, type: 'success' })
+        if (selectedCardId === id) {
+          setSelectedCardId(cards.find(c => c.id !== id)?.id || null)
+        }
+      } else {
+        setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
+      }
+      setDeletingId(null)
+    }
+  }
+
+  async function handleDeleteTransaction(id: string, description: string) {
+    if (confirm(`Excluir "${description}"? Todas as parcelas serao removidas.`)) {
+      setDeletingId(id)
+      const result = await deleteTransaction(id)
       if (result?.success) {
         setToast({ message: result.message!, type: 'success' })
       } else {
@@ -125,20 +200,34 @@ export default function CardCrud({ cards }: CardCrudProps) {
     }
   }
 
-  const toggleSelectAll = () => {
-    if (selectedIds.length === filteredCards.length) {
-      setSelectedIds([])
-    } else {
-      setSelectedIds(filteredCards.map(c => c.id))
-    }
+  async function handleToggleInstallment(installment: Installment) {
+    startTransition(async () => {
+      const result = installment.isPaid
+        ? await markInstallmentAsUnpaid(installment.id)
+        : await markInstallmentAsPaid(installment.id)
+
+      if (result?.success) {
+        setToast({ message: result.message!, type: 'success' })
+      } else {
+        setToast({ message: result?.error || 'Erro', type: 'error' })
+      }
+    })
   }
 
-  const toggleSelect = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(i => i !== id))
-    } else {
-      setSelectedIds([...selectedIds, id])
+  function changeInvoiceMonth(delta: number) {
+    let newMonth = invoiceMonth + delta
+    let newYear = invoiceYear
+
+    if (newMonth > 12) {
+      newMonth = 1
+      newYear++
+    } else if (newMonth < 1) {
+      newMonth = 12
+      newYear--
     }
+
+    setInvoiceMonth(newMonth)
+    setInvoiceYear(newYear)
   }
 
   return (
@@ -165,30 +254,42 @@ export default function CardCrud({ cards }: CardCrudProps) {
                 {cards.length} {cards.length === 1 ? 'cartao' : 'cartoes'}
               </Badge>
             </div>
-            <p className="text-sm text-gray-500 mt-1">Gerencie seus cartoes de credito</p>
+            <p className="text-sm text-gray-500 mt-1">Gerencie seus cartoes e compras</p>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Buscar cartoes..."
-                value={searchFilter}
-                onChange={(e) => setSearchFilter(e.target.value)}
-                className="pl-9 w-[200px] sm:w-[280px] h-10 border-gray-200"
-              />
-            </div>
+            {/* Add Transaction Button */}
+            <Dialog open={isTransactionDialogOpen} onOpenChange={setIsTransactionDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-10 font-medium border-blue-200 text-blue-600 hover:bg-blue-50"
+                  disabled={cards.length === 0}
+                >
+                  <ShoppingCart className="w-4 h-4 mr-2" />
+                  Nova Compra
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[450px]">
+                <DialogHeader>
+                  <DialogTitle>Nova Compra no Cartao</DialogTitle>
+                </DialogHeader>
+                <AddCardTransactionForm
+                  cards={cards}
+                  onSuccess={() => setIsTransactionDialogOpen(false)}
+                />
+              </DialogContent>
+            </Dialog>
 
-            {/* Create Button */}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            {/* Create Card Button */}
+            <Dialog open={isCardDialogOpen} onOpenChange={setIsCardDialogOpen}>
               <DialogTrigger asChild>
                 <Button
                   className="h-10 font-medium"
                   style={{ backgroundColor: '#3B82F6' }}
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Criar Cartao
+                  Novo Cartao
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[450px]">
@@ -196,8 +297,7 @@ export default function CardCrud({ cards }: CardCrudProps) {
                   <DialogTitle>Criar Cartao</DialogTitle>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-                  {/* Nome do Cartao */}
+                <form onSubmit={handleCreateCard} className="space-y-4 mt-2">
                   <div className="space-y-2">
                     <Label htmlFor="card-name">Nome do Cartao</Label>
                     <Input
@@ -210,11 +310,10 @@ export default function CardCrud({ cards }: CardCrudProps) {
                     />
                   </div>
 
-                  {/* Cor do Cartao */}
                   <div className="space-y-2">
                     <Label>Cor do Cartao</Label>
                     <div className="grid grid-cols-4 gap-2">
-                      {CARD_COLORS.map((color) => (
+                      {CARD_COLOR_OPTIONS.map((color) => (
                         <button
                           key={color.value}
                           type="button"
@@ -229,16 +328,12 @@ export default function CardCrud({ cards }: CardCrudProps) {
                         />
                       ))}
                     </div>
-                    <p className="text-xs text-gray-500">
-                      {CARD_COLORS.find(c => c.value === selectedColor)?.label}
-                    </p>
                   </div>
 
-                  {/* Bandeira */}
                   <div className="space-y-2">
                     <Label>Bandeira</Label>
                     <div className="grid grid-cols-4 gap-2">
-                      {CARD_BRANDS.map((brand) => (
+                      {CARD_BRAND_OPTIONS.map((brand) => (
                         <button
                           key={brand.value}
                           type="button"
@@ -257,7 +352,6 @@ export default function CardCrud({ cards }: CardCrudProps) {
                     </div>
                   </div>
 
-                  {/* 4 Ultimos Digitos e Limite */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="lastFourDigits">4 Ultimos Digitos</Label>
@@ -288,7 +382,6 @@ export default function CardCrud({ cards }: CardCrudProps) {
                     </div>
                   </div>
 
-                  {/* Fechamento e Vencimento */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="closingDay">Dia Fechamento</Label>
@@ -321,7 +414,6 @@ export default function CardCrud({ cards }: CardCrudProps) {
                     </div>
                   </div>
 
-                  {/* Submit */}
                   <Button
                     type="submit"
                     disabled={isPending}
@@ -347,115 +439,346 @@ export default function CardCrud({ cards }: CardCrudProps) {
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="all" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="bg-gray-100 p-1 h-auto">
             <TabsTrigger
-              value="all"
+              value="cartoes"
               className="px-4 py-2 text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md"
             >
-              Todos os Cartoes
-              <span className="ml-2 text-gray-500">{cards.length}</span>
+              <CreditCard className="w-4 h-4 mr-2" />
+              Meus Cartoes
+            </TabsTrigger>
+            <TabsTrigger
+              value="fatura"
+              className="px-4 py-2 text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md"
+            >
+              <Receipt className="w-4 h-4 mr-2" />
+              Fatura
+            </TabsTrigger>
+            <TabsTrigger
+              value="transacoes"
+              className="px-4 py-2 text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md"
+            >
+              <ShoppingCart className="w-4 h-4 mr-2" />
+              Todas Compras
             </TabsTrigger>
           </TabsList>
-        </Tabs>
 
-        {/* Table */}
-        <div className="bg-white rounded-lg border border-gray-200">
-          {filteredCards.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
-                <CreditCard className="w-8 h-8 text-blue-500" />
+          {/* Cartoes Tab */}
+          <TabsContent value="cartoes" className="mt-6">
+            <div className="mb-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Buscar cartoes..."
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  className="pl-9 w-full sm:w-[280px] h-10 border-gray-200"
+                />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhum cartao encontrado</h3>
-              <p className="text-gray-500">
-                {searchFilter ? 'Tente outro termo de busca' : 'Clique em "Criar Cartao" para adicionar'}
-              </p>
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={selectedIds.length === filteredCards.length}
-                      onCheckedChange={toggleSelectAll}
-                    />
-                  </TableHead>
-                  <TableHead>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2 -ml-2 font-medium hover:bg-transparent"
+
+            <div className="bg-white rounded-lg border border-gray-200">
+              {filteredCards.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
+                    <CreditCard className="w-8 h-8 text-blue-500" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhum cartao encontrado</h3>
+                  <p className="text-gray-500">
+                    {searchFilter ? 'Tente outro termo de busca' : 'Clique em "Novo Cartao" para adicionar'}
+                  </p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
+                      <TableHead>Cartao</TableHead>
+                      <TableHead>Bandeira</TableHead>
+                      <TableHead>Limite</TableHead>
+                      <TableHead>Fechamento</TableHead>
+                      <TableHead>Vencimento</TableHead>
+                      <TableHead className="w-12"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredCards.map((card) => (
+                      <TableRow key={card.id} className={deletingId === card.id ? 'opacity-50' : ''}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-10 h-7 rounded flex items-center justify-center text-white text-xs font-bold"
+                              style={{ backgroundColor: CARD_COLORS[card.color] || '#820AD1' }}
+                            >
+                              {card.lastFourDigits ? `•${card.lastFourDigits.slice(-2)}` : '••'}
+                            </div>
+                            <span className="font-medium text-gray-900">
+                              {card.name}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span>{CARD_BRANDS[card.brand]?.icon || '💳'}</span>
+                            <span className="text-gray-600 text-sm">{CARD_BRANDS[card.brand]?.label || 'Outro'}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-semibold text-gray-700">
+                          {formatCurrency(card.limit)}
+                        </TableCell>
+                        <TableCell className="text-gray-600">
+                          Dia {card.closingDay}
+                        </TableCell>
+                        <TableCell className="text-gray-600">
+                          Dia {card.dueDay}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteCard(card.id, card.name)}
+                            disabled={deletingId === card.id}
+                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                          >
+                            {deletingId === card.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Fatura Tab */}
+          <TabsContent value="fatura" className="mt-6">
+            {cards.length === 0 ? (
+              <div className="bg-white rounded-lg border border-gray-200 text-center py-12">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
+                  <Receipt className="w-8 h-8 text-blue-500" />
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhum cartao cadastrado</h3>
+                <p className="text-gray-500">Cadastre um cartao para ver a fatura</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Card Selector */}
+                <div className="flex flex-wrap gap-2">
+                  {cards.map(card => (
+                    <button
+                      key={card.id}
+                      onClick={() => setSelectedCardId(card.id)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                        selectedCardId === card.id
+                          ? 'ring-2 ring-blue-500 shadow-md'
+                          : 'bg-gray-100 hover:bg-gray-200'
+                      }`}
+                      style={{
+                        backgroundColor: selectedCardId === card.id ? CARD_COLORS[card.color] : undefined,
+                        color: selectedCardId === card.id ? 'white' : undefined,
+                      }}
                     >
-                      Nome
-                      <ArrowUpDown className="ml-1 h-3 w-3" />
-                    </Button>
-                  </TableHead>
-                  <TableHead>Bandeira</TableHead>
-                  <TableHead>Limite</TableHead>
-                  <TableHead>Fechamento</TableHead>
-                  <TableHead>Vencimento</TableHead>
-                  <TableHead className="w-12"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCards.map((card) => (
-                  <TableRow key={card.id} className={deletingId === card.id ? 'opacity-50' : ''}>
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedIds.includes(card.id)}
-                        onCheckedChange={() => toggleSelect(card.id)}
-                      />
-                    </TableCell>
-                    <TableCell>
+                      <CreditCard className="w-4 h-4" />
+                      <span className="font-medium">{card.name}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Invoice Header */}
+                {selectedCard && (
+                  <Card className="bg-gradient-to-r from-gray-900 to-gray-800 text-white p-6">
+                    <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div
-                          className="w-10 h-7 rounded flex items-center justify-center text-white text-xs font-bold"
-                          style={{ backgroundColor: getCardColor(card.color) }}
+                          className="w-12 h-8 rounded flex items-center justify-center text-sm font-bold"
+                          style={{ backgroundColor: CARD_COLORS[selectedCard.color] }}
                         >
-                          {card.lastFourDigits ? `•${card.lastFourDigits.slice(-2)}` : '••'}
+                          {selectedCard.lastFourDigits ? `•${selectedCard.lastFourDigits.slice(-2)}` : '••'}
                         </div>
-                        <span className="font-medium text-blue-600 hover:text-blue-700 cursor-pointer">
-                          {card.name}
-                        </span>
+                        <div>
+                          <p className="font-semibold">{selectedCard.name}</p>
+                          <p className="text-sm text-gray-400">Vencimento dia {selectedCard.dueDay}</p>
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell>
+
+                      {/* Month Navigator */}
                       <div className="flex items-center gap-2">
-                        <span>{getBrandIcon(card.brand)}</span>
-                        <span className="text-gray-600 text-sm">{getBrandLabel(card.brand)}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => changeInvoiceMonth(-1)}
+                          className="text-white hover:bg-white/10"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </Button>
+                        <span className="font-medium min-w-[140px] text-center">
+                          {MONTHS[invoiceMonth - 1]} {invoiceYear}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => changeInvoiceMonth(1)}
+                          className="text-white hover:bg-white/10"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </Button>
                       </div>
-                    </TableCell>
-                    <TableCell className="font-semibold text-gray-700">
-                      {formatCurrency(card.limit)}
-                    </TableCell>
-                    <TableCell className="text-gray-600">
-                      Dia {card.closingDay}
-                    </TableCell>
-                    <TableCell className="text-gray-600">
-                      Dia {card.dueDay}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(card.id, card.name)}
-                        disabled={deletingId === card.id}
-                        className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
-                      >
-                        {deletingId === card.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+                    </div>
+
+                    {/* Totals */}
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-sm text-gray-400">Total da Fatura</p>
+                        <p className="text-2xl font-bold">{formatCurrency(invoiceTotal)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-emerald-400">Pago</p>
+                        <p className="text-2xl font-bold text-emerald-400">{formatCurrency(invoicePaid)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-amber-400">Pendente</p>
+                        <p className="text-2xl font-bold text-amber-400">{formatCurrency(invoicePending)}</p>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Invoice Items */}
+                <div className="bg-white rounded-lg border border-gray-200">
+                  {invoiceInstallments.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Receipt className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500">Nenhuma compra neste periodo</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50/50">
+                          <TableHead className="w-12">Pago</TableHead>
+                          <TableHead>Descricao</TableHead>
+                          <TableHead>Parcela</TableHead>
+                          <TableHead>Vencimento</TableHead>
+                          <TableHead className="text-right">Valor</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {invoiceInstallments.map((inst) => (
+                          <TableRow key={inst.id} className={inst.isPaid ? 'bg-emerald-50/50' : ''}>
+                            <TableCell>
+                              <button
+                                onClick={() => handleToggleInstallment(inst)}
+                                disabled={isPending}
+                                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+                                  inst.isPaid
+                                    ? 'bg-emerald-500 border-emerald-500 text-white'
+                                    : 'border-gray-300 hover:border-blue-500'
+                                }`}
+                              >
+                                {inst.isPaid && <Check className="w-4 h-4" />}
+                              </button>
+                            </TableCell>
+                            <TableCell>
+                              <span className={inst.isPaid ? 'text-gray-500 line-through' : 'font-medium'}>
+                                {inst.transaction?.description}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="font-mono">
+                                {inst.number}/{inst.transaction?.installmentsCount}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-gray-600">
+                              {formatDate(inst.dueDate)}
+                            </TableCell>
+                            <TableCell className={`text-right font-semibold ${inst.isPaid ? 'text-gray-400' : 'text-gray-900'}`}>
+                              {formatCurrency(inst.amount)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Transacoes Tab */}
+          <TabsContent value="transacoes" className="mt-6">
+            <div className="bg-white rounded-lg border border-gray-200">
+              {transactions.length === 0 ? (
+                <div className="text-center py-12">
+                  <ShoppingCart className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhuma compra registrada</h3>
+                  <p className="text-gray-500">Clique em "Nova Compra" para adicionar</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50/50">
+                      <TableHead>Descricao</TableHead>
+                      <TableHead>Cartao</TableHead>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Parcelas</TableHead>
+                      <TableHead className="text-right">Valor Total</TableHead>
+                      <TableHead className="w-12"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {transactions.map((transaction) => {
+                      const paidCount = transaction.installments.filter(i => i.isPaid).length
+                      return (
+                        <TableRow key={transaction.id}>
+                          <TableCell className="font-medium">{transaction.description}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-6 h-4 rounded"
+                                style={{ backgroundColor: CARD_COLORS[transaction.card.color] }}
+                              />
+                              <span className="text-sm text-gray-600">{transaction.card.name}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-gray-600">
+                            {formatDate(transaction.purchaseDate)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={paidCount === transaction.installmentsCount ? 'default' : 'secondary'}>
+                              {paidCount}/{transaction.installmentsCount} pagas
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {formatCurrency(transaction.totalAmount)}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteTransaction(transaction.id, transaction.description)}
+                              disabled={deletingId === transaction.id}
+                              className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                            >
+                              {deletingId === transaction.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </>
   )

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { deleteExpense, markExpenseAsPaid } from '@/app/actions/expenses'
+import { markInstallmentAsPaid, markInstallmentAsUnpaid, deleteTransaction } from '@/app/actions/cards'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -13,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Trash2, TrendingDown, ArrowUpDown, Check, Clock } from 'lucide-react'
+import { Trash2, TrendingDown, ArrowUpDown, Check, Clock, CreditCard } from 'lucide-react'
 import Toast from './Toast'
 
 interface Expense {
@@ -30,6 +31,41 @@ interface Expense {
   } | null
 }
 
+interface Transaction {
+  id: string
+  cardId: string
+  description: string
+  totalAmount: number
+  purchaseDate: Date
+  installmentsCount: number
+  card: {
+    id: string
+    name: string
+    color: string
+  }
+  installments: Installment[]
+}
+
+interface Installment {
+  id: string
+  transactionId: string
+  number: number
+  amount: number
+  dueDate: Date
+  isPaid: boolean
+}
+
+const CARD_COLORS: Record<string, string> = {
+  nubank: '#820AD1',
+  inter: '#FF7A00',
+  c6blue: '#1F51AC',
+  black: '#1A1A1A',
+  platinum: '#71717A',
+  gold: '#D4AF37',
+  red: '#D32F2F',
+  graphite: '#424242',
+}
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -41,14 +77,39 @@ function formatDate(date: Date): string {
   return new Date(date).toLocaleDateString('pt-BR')
 }
 
+// Tipo unificado para exibicao
+interface UnifiedExpense {
+  id: string
+  description: string
+  amount: number
+  dueDate: Date
+  isPaid: boolean
+  isFixed?: boolean
+  category?: {
+    name: string
+    color: string
+    icon: string | null
+  } | null
+  // Card-specific fields
+  isCardExpense: boolean
+  cardName?: string
+  cardColor?: string
+  installmentNumber?: number
+  installmentsCount?: number
+  transactionId?: string
+  installmentId?: string
+}
+
 interface ExpenseTableProps {
   expenses: Expense[]
+  transactions?: Transaction[]
   searchFilter?: string
   statusFilter?: 'all' | 'pending' | 'paid'
 }
 
 export default function ExpenseTable({
   expenses,
+  transactions = [],
   searchFilter = '',
   statusFilter = 'all'
 }: ExpenseTableProps) {
@@ -58,18 +119,61 @@ export default function ExpenseTable({
   const [sortField, setSortField] = useState<'description' | 'amount' | 'dueDate'>('dueDate')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
-  let filteredExpenses = expenses.filter(exp =>
+  // Get current month's installments from transactions
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const currentYear = now.getFullYear()
+
+  const cardInstallments: UnifiedExpense[] = transactions.flatMap(t =>
+    t.installments
+      .filter(inst => {
+        const dueDate = new Date(inst.dueDate)
+        return dueDate.getMonth() === currentMonth && dueDate.getFullYear() === currentYear
+      })
+      .map(inst => ({
+        id: `card-${inst.id}`,
+        description: `${t.description}`,
+        amount: inst.amount,
+        dueDate: new Date(inst.dueDate),
+        isPaid: inst.isPaid,
+        isCardExpense: true,
+        cardName: t.card.name,
+        cardColor: t.card.color,
+        installmentNumber: inst.number,
+        installmentsCount: t.installmentsCount,
+        transactionId: t.id,
+        installmentId: inst.id,
+      }))
+  )
+
+  // Convert regular expenses to unified format
+  const regularExpenses: UnifiedExpense[] = expenses.map(exp => ({
+    id: exp.id,
+    description: exp.description,
+    amount: exp.amount,
+    dueDate: new Date(exp.dueDate),
+    isPaid: exp.isPaid || false,
+    isFixed: exp.isFixed,
+    category: exp.category,
+    isCardExpense: false,
+  }))
+
+  // Combine and filter
+  let allExpenses = [...regularExpenses, ...cardInstallments]
+
+  allExpenses = allExpenses.filter(exp =>
     exp.description.toLowerCase().includes(searchFilter.toLowerCase()) ||
-    exp.category?.name.toLowerCase().includes(searchFilter.toLowerCase())
+    exp.category?.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
+    exp.cardName?.toLowerCase().includes(searchFilter.toLowerCase())
   )
 
   if (statusFilter === 'pending') {
-    filteredExpenses = filteredExpenses.filter(exp => !exp.isPaid)
+    allExpenses = allExpenses.filter(exp => !exp.isPaid)
   } else if (statusFilter === 'paid') {
-    filteredExpenses = filteredExpenses.filter(exp => exp.isPaid)
+    allExpenses = allExpenses.filter(exp => exp.isPaid)
   }
 
-  const sortedExpenses = [...filteredExpenses].sort((a, b) => {
+  const sortedExpenses = [...allExpenses].sort((a, b) => {
     let comparison = 0
     switch (sortField) {
       case 'description':
@@ -94,26 +198,55 @@ export default function ExpenseTable({
     }
   }
 
-  async function handleMarkPaid(id: string) {
-    setLoadingId(id)
-    const result = await markExpenseAsPaid(id)
-    if (result?.success) {
-      setToast({ message: result.message!, type: 'success' })
-    } else {
-      setToast({ message: result?.error || 'Erro', type: 'error' })
-    }
-    setLoadingId(null)
-  }
+  async function handleMarkPaid(exp: UnifiedExpense) {
+    setLoadingId(exp.id)
 
-  async function handleDelete(id: string, description: string) {
-    if (confirm(`Excluir "${description}"?`)) {
-      setLoadingId(id)
-      const result = await deleteExpense(id)
+    if (exp.isCardExpense && exp.installmentId) {
+      const result = exp.isPaid
+        ? await markInstallmentAsUnpaid(exp.installmentId)
+        : await markInstallmentAsPaid(exp.installmentId)
+
       if (result?.success) {
         setToast({ message: result.message!, type: 'success' })
       } else {
-        setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
+        setToast({ message: result?.error || 'Erro', type: 'error' })
       }
+    } else {
+      const result = await markExpenseAsPaid(exp.id)
+      if (result?.success) {
+        setToast({ message: result.message!, type: 'success' })
+      } else {
+        setToast({ message: result?.error || 'Erro', type: 'error' })
+      }
+    }
+
+    setLoadingId(null)
+  }
+
+  async function handleDelete(exp: UnifiedExpense) {
+    const confirmMsg = exp.isCardExpense
+      ? `Excluir compra "${exp.description}"? Todas as parcelas serao removidas.`
+      : `Excluir "${exp.description}"?`
+
+    if (confirm(confirmMsg)) {
+      setLoadingId(exp.id)
+
+      if (exp.isCardExpense && exp.transactionId) {
+        const result = await deleteTransaction(exp.transactionId)
+        if (result?.success) {
+          setToast({ message: result.message!, type: 'success' })
+        } else {
+          setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
+        }
+      } else {
+        const result = await deleteExpense(exp.id)
+        if (result?.success) {
+          setToast({ message: result.message!, type: 'success' })
+        } else {
+          setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
+        }
+      }
+
       setLoadingId(null)
     }
   }
@@ -163,7 +296,7 @@ export default function ExpenseTable({
           <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
             <TableHead className="w-12">
               <Checkbox
-                checked={selectedIds.length === sortedExpenses.length}
+                checked={selectedIds.length === sortedExpenses.length && sortedExpenses.length > 0}
                 onCheckedChange={toggleSelectAll}
               />
             </TableHead>
@@ -178,7 +311,7 @@ export default function ExpenseTable({
                 <ArrowUpDown className="ml-1 h-3 w-3" />
               </Button>
             </TableHead>
-            <TableHead>Categoria</TableHead>
+            <TableHead>Categoria/Cartao</TableHead>
             <TableHead>
               <Button
                 variant="ghost"
@@ -219,11 +352,16 @@ export default function ExpenseTable({
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
-                  <span className={`font-medium hover:text-orange-700 cursor-pointer ${
-                    exp.isPaid ? 'text-gray-400 line-through' : 'text-orange-600'
+                  <span className={`font-medium cursor-pointer ${
+                    exp.isPaid ? 'text-gray-400 line-through' : exp.isCardExpense ? 'text-blue-600 hover:text-blue-700' : 'text-orange-600 hover:text-orange-700'
                   }`}>
                     {exp.description}
                   </span>
+                  {exp.isCardExpense && exp.installmentNumber && exp.installmentsCount && (
+                    <Badge variant="outline" className="text-xs py-0 font-mono">
+                      {exp.installmentNumber}/{exp.installmentsCount}
+                    </Badge>
+                  )}
                   {exp.isFixed && (
                     <Badge variant="outline" className="text-xs py-0">
                       <Clock className="w-3 h-3 mr-1" />
@@ -233,7 +371,19 @@ export default function ExpenseTable({
                 </div>
               </TableCell>
               <TableCell>
-                {exp.category ? (
+                {exp.isCardExpense ? (
+                  <Badge
+                    variant="secondary"
+                    className="text-xs"
+                    style={{
+                      backgroundColor: `${CARD_COLORS[exp.cardColor || ''] || '#6366f1'}15`,
+                      color: CARD_COLORS[exp.cardColor || ''] || '#6366f1',
+                    }}
+                  >
+                    <CreditCard className="w-3 h-3 mr-1" />
+                    {exp.cardName}
+                  </Badge>
+                ) : exp.category ? (
                   <Badge
                     variant="secondary"
                     className="text-xs"
@@ -262,7 +412,9 @@ export default function ExpenseTable({
                   </Badge>
                 )}
               </TableCell>
-              <TableCell className={`font-semibold ${exp.isPaid ? 'text-gray-400' : 'text-orange-600'}`}>
+              <TableCell className={`font-semibold ${
+                exp.isPaid ? 'text-gray-400' : exp.isCardExpense ? 'text-blue-600' : 'text-orange-600'
+              }`}>
                 {formatCurrency(exp.amount)}
               </TableCell>
               <TableCell>
@@ -271,7 +423,7 @@ export default function ExpenseTable({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleMarkPaid(exp.id)}
+                      onClick={() => handleMarkPaid(exp)}
                       disabled={loadingId === exp.id}
                       className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
                       title="Marcar como pago"
@@ -279,13 +431,25 @@ export default function ExpenseTable({
                       <Check className="h-4 w-4" />
                     </Button>
                   )}
+                  {exp.isPaid && exp.isCardExpense && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleMarkPaid(exp)}
+                      disabled={loadingId === exp.id}
+                      className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                      title="Desmarcar pagamento"
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleDelete(exp.id, exp.description)}
+                    onClick={() => handleDelete(exp)}
                     disabled={loadingId === exp.id}
                     className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
-                    title="Excluir"
+                    title={exp.isCardExpense ? 'Excluir compra (todas parcelas)' : 'Excluir'}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
