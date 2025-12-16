@@ -391,6 +391,106 @@ export async function markInstallmentAsPaid(installmentId: string) {
   }
 }
 
+// Mark all installments in an invoice as paid
+export async function markInvoiceAsPaid(cardId: string, month: number, year: number) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { error: 'Você precisa estar logado' }
+    }
+
+    // Verify card belongs to user
+    const card = await prisma.creditCard.findUnique({
+      where: { id: cardId }
+    })
+
+    if (!card || card.userId !== session.user.id) {
+      return { error: 'Cartão não encontrado' }
+    }
+
+    // Get all unpaid installments for this invoice
+    const startDate = new Date(year, month - 1, 1)
+    const endDate = new Date(year, month, 0, 23, 59, 59)
+
+    const result = await prisma.installment.updateMany({
+      where: {
+        transaction: {
+          cardId: cardId
+        },
+        dueDate: {
+          gte: startDate,
+          lte: endDate
+        },
+        isPaid: false
+      },
+      data: {
+        isPaid: true,
+        paidAt: new Date()
+      }
+    })
+
+    revalidatePath('/')
+    return {
+      success: true,
+      message: result.count > 0
+        ? `${result.count} parcela${result.count > 1 ? 's' : ''} marcada${result.count > 1 ? 's' : ''} como paga${result.count > 1 ? 's' : ''}!`
+        : 'Todas as parcelas já estavam pagas!'
+    }
+  } catch (error) {
+    console.error('Error marking invoice as paid:', error)
+    return { error: 'Erro ao marcar fatura como paga' }
+  }
+}
+
+// Mark all installments in an invoice as unpaid
+export async function markInvoiceAsUnpaid(cardId: string, month: number, year: number) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { error: 'Você precisa estar logado' }
+    }
+
+    const card = await prisma.creditCard.findUnique({
+      where: { id: cardId }
+    })
+
+    if (!card || card.userId !== session.user.id) {
+      return { error: 'Cartão não encontrado' }
+    }
+
+    const startDate = new Date(year, month - 1, 1)
+    const endDate = new Date(year, month, 0, 23, 59, 59)
+
+    const result = await prisma.installment.updateMany({
+      where: {
+        transaction: {
+          cardId: cardId
+        },
+        dueDate: {
+          gte: startDate,
+          lte: endDate
+        },
+        isPaid: true
+      },
+      data: {
+        isPaid: false,
+        paidAt: null
+      }
+    })
+
+    revalidatePath('/')
+    return {
+      success: true,
+      message: result.count > 0
+        ? `${result.count} parcela${result.count > 1 ? 's' : ''} desmarcada${result.count > 1 ? 's' : ''}!`
+        : 'Nenhuma parcela estava paga!'
+    }
+  } catch (error) {
+    console.error('Error unmarking invoice:', error)
+    return { error: 'Erro ao desmarcar fatura' }
+  }
+}
+
 export async function markInstallmentAsUnpaid(installmentId: string) {
   try {
     const session = await auth()

@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Plus, Trash2, Search, TrendingUp, TrendingDown, Loader2, Tag } from 'lucide-react'
 import Toast from './Toast'
+import ConfirmModal from './ConfirmModal'
 
 interface Category {
   id: string
@@ -46,6 +47,7 @@ export default function CategoryCrud({ categories }: CategoryCrudProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [searchFilter, setSearchFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState<'all' | 'expense' | 'income'>('all')
+  const [deleteModal, setDeleteModal] = useState<{ id: string; name: string } | null>(null)
 
   const incomeCategories = categories.filter(c => c.type === 'INCOME')
   const expenseCategories = categories.filter(c => c.type === 'EXPENSE')
@@ -85,17 +87,17 @@ export default function CategoryCrud({ categories }: CategoryCrudProps) {
     })
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (confirm(`Excluir categoria "${name}"?`)) {
-      setDeletingId(id)
-      const result = await deleteCategory(id)
-      if (result?.success) {
-        setToast({ message: 'Categoria excluída!', type: 'success' })
-      } else {
-        setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
-      }
-      setDeletingId(null)
+  async function handleDelete() {
+    if (!deleteModal) return
+    setDeletingId(deleteModal.id)
+    const result = await deleteCategory(deleteModal.id)
+    if (result?.success) {
+      setToast({ message: 'Categoria excluida!', type: 'success' })
+    } else {
+      setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
     }
+    setDeletingId(null)
+    setDeleteModal(null)
   }
 
   return (
@@ -107,6 +109,15 @@ export default function CategoryCrud({ categories }: CategoryCrudProps) {
           onClose={() => setToast(null)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={!!deleteModal}
+        onClose={() => setDeleteModal(null)}
+        onConfirm={handleDelete}
+        title="Excluir categoria"
+        description={`Tem certeza que deseja excluir a categoria "${deleteModal?.name}"? Esta acao nao pode ser desfeita.`}
+        isLoading={!!deletingId}
+      />
 
       <div className="space-y-6">
         {/* Header */}
@@ -148,7 +159,7 @@ export default function CategoryCrud({ categories }: CategoryCrudProps) {
                   Criar Categoria
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[400px]">
+              <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Criar Categoria</DialogTitle>
                 </DialogHeader>
@@ -325,7 +336,7 @@ export default function CategoryCrud({ categories }: CategoryCrudProps) {
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    handleDelete(cat.id, cat.name)
+                    setDeleteModal({ id: cat.id, name: cat.name })
                   }}
                   disabled={deletingId === cat.id}
                   className="absolute top-2 right-2 w-7 h-7 rounded-full bg-gray-100 text-gray-400 hover:bg-red-100 hover:text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

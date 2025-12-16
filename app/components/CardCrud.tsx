@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { createCard, deleteCard, deleteTransaction, markInstallmentAsPaid, markInstallmentAsUnpaid } from '@/app/actions/cards'
+import { createCard, updateCard, deleteCard, deleteTransaction, markInstallmentAsPaid, markInstallmentAsUnpaid, markInvoiceAsPaid, markInvoiceAsUnpaid } from '@/app/actions/cards'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,8 +24,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Plus, Trash2, Search, CreditCard, Loader2, ArrowUpDown, ShoppingCart, Receipt, ChevronLeft, ChevronRight, Check, X, Pencil } from 'lucide-react'
+import { Plus, Trash2, Search, CreditCard, Loader2, ArrowUpDown, ShoppingCart, Receipt, ChevronLeft, ChevronRight, Check, X, Pencil, CheckCircle2 } from 'lucide-react'
 import Toast from './Toast'
+import ConfirmModal from './ConfirmModal'
 import AddCardTransactionForm from './AddCardTransactionForm'
 import EditTransactionModal from './EditTransactionModal'
 
@@ -128,6 +129,11 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
   const [selectedBrand, setSelectedBrand] = useState('mastercard')
   const [activeTab, setActiveTab] = useState('cartoes')
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
+  const [deleteCardModal, setDeleteCardModal] = useState<{ id: string; name: string } | null>(null)
+  const [deleteTransactionModal, setDeleteTransactionModal] = useState<{ id: string; description: string } | null>(null)
+  const [editingCard, setEditingCard] = useState<CreditCardType | null>(null)
+  const [editColor, setEditColor] = useState('nubank')
+  const [editBrand, setEditBrand] = useState('mastercard')
 
   // Invoice state
   const now = new Date()
@@ -173,33 +179,58 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
     })
   }
 
-  async function handleDeleteCard(id: string, name: string) {
-    if (confirm(`Excluir cartao "${name}"? Todas as transacoes serao removidas.`)) {
-      setDeletingId(id)
-      const result = await deleteCard(id)
+  async function handleEditCard(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!editingCard) return
+
+    const formData = new FormData(e.currentTarget)
+    formData.set('color', editColor)
+    formData.set('brand', editBrand)
+
+    startTransition(async () => {
+      const result = await updateCard(editingCard.id, formData)
       if (result?.success) {
         setToast({ message: result.message!, type: 'success' })
-        if (selectedCardId === id) {
-          setSelectedCardId(cards.find(c => c.id !== id)?.id || null)
-        }
+        setEditingCard(null)
       } else {
-        setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
+        setToast({ message: result?.error || 'Erro ao atualizar', type: 'error' })
       }
-      setDeletingId(null)
-    }
+    })
   }
 
-  async function handleDeleteTransaction(id: string, description: string) {
-    if (confirm(`Excluir "${description}"? Todas as parcelas serao removidas.`)) {
-      setDeletingId(id)
-      const result = await deleteTransaction(id)
-      if (result?.success) {
-        setToast({ message: result.message!, type: 'success' })
-      } else {
-        setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
+  function openEditCard(card: CreditCardType) {
+    setEditingCard(card)
+    setEditColor(card.color)
+    setEditBrand(card.brand)
+  }
+
+  async function handleDeleteCard() {
+    if (!deleteCardModal) return
+    setDeletingId(deleteCardModal.id)
+    const result = await deleteCard(deleteCardModal.id)
+    if (result?.success) {
+      setToast({ message: result.message!, type: 'success' })
+      if (selectedCardId === deleteCardModal.id) {
+        setSelectedCardId(cards.find(c => c.id !== deleteCardModal.id)?.id || null)
       }
-      setDeletingId(null)
+    } else {
+      setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
     }
+    setDeletingId(null)
+    setDeleteCardModal(null)
+  }
+
+  async function handleDeleteTransaction() {
+    if (!deleteTransactionModal) return
+    setDeletingId(deleteTransactionModal.id)
+    const result = await deleteTransaction(deleteTransactionModal.id)
+    if (result?.success) {
+      setToast({ message: result.message!, type: 'success' })
+    } else {
+      setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
+    }
+    setDeletingId(null)
+    setDeleteTransactionModal(null)
   }
 
   async function handleToggleInstallment(installment: Installment) {
@@ -207,6 +238,24 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
       const result = installment.isPaid
         ? await markInstallmentAsUnpaid(installment.id)
         : await markInstallmentAsPaid(installment.id)
+
+      if (result?.success) {
+        setToast({ message: result.message!, type: 'success' })
+      } else {
+        setToast({ message: result?.error || 'Erro', type: 'error' })
+      }
+    })
+  }
+
+  async function handleToggleInvoice() {
+    if (!selectedCardId) return
+
+    const allPaid = invoiceInstallments.length > 0 && invoiceInstallments.every(i => i.isPaid)
+
+    startTransition(async () => {
+      const result = allPaid
+        ? await markInvoiceAsUnpaid(selectedCardId, invoiceMonth, invoiceYear)
+        : await markInvoiceAsPaid(selectedCardId, invoiceMonth, invoiceYear)
 
       if (result?.success) {
         setToast({ message: result.message!, type: 'success' })
@@ -242,6 +291,180 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
         />
       )}
 
+      <ConfirmModal
+        isOpen={!!deleteCardModal}
+        onClose={() => setDeleteCardModal(null)}
+        onConfirm={handleDeleteCard}
+        title="Excluir cartao"
+        description={`Tem certeza que deseja excluir o cartao "${deleteCardModal?.name}"? Todas as compras e parcelas serao removidas.`}
+        isLoading={!!deletingId}
+      />
+
+      <ConfirmModal
+        isOpen={!!deleteTransactionModal}
+        onClose={() => setDeleteTransactionModal(null)}
+        onConfirm={handleDeleteTransaction}
+        title="Excluir compra"
+        description={`Tem certeza que deseja excluir "${deleteTransactionModal?.description}"? Todas as parcelas serao removidas.`}
+        isLoading={!!deletingId}
+      />
+
+      {/* Modal de Edicao do Cartao */}
+      <Dialog open={!!editingCard} onOpenChange={(open) => !open && setEditingCard(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Cartao</DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleEditCard} className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-card-name">Nome do Cartao</Label>
+              <Input
+                id="edit-card-name"
+                name="name"
+                defaultValue={editingCard?.name}
+                placeholder="Ex: Nubank, Inter, C6..."
+                required
+                disabled={isPending}
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Cor do Cartao</Label>
+              <div className="grid grid-cols-4 gap-2">
+                {CARD_COLOR_OPTIONS.map((color) => (
+                  <button
+                    key={color.value}
+                    type="button"
+                    onClick={() => setEditColor(color.value)}
+                    disabled={isPending}
+                    style={{ backgroundColor: color.color }}
+                    className={`h-10 rounded-lg transition-all duration-200 ${
+                      editColor === color.value
+                        ? 'ring-2 ring-offset-2 ring-blue-500 scale-105'
+                        : 'hover:scale-105 opacity-80 hover:opacity-100'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Bandeira</Label>
+              <div className="grid grid-cols-4 gap-2">
+                {CARD_BRAND_OPTIONS.map((brand) => (
+                  <button
+                    key={brand.value}
+                    type="button"
+                    onClick={() => setEditBrand(brand.value)}
+                    disabled={isPending}
+                    className={`h-12 rounded-lg border-2 transition-all duration-200 flex flex-col items-center justify-center gap-0.5 ${
+                      editBrand === brand.value
+                        ? 'border-blue-500 bg-blue-50 scale-105'
+                        : 'border-gray-200 hover:border-gray-300 hover:scale-105'
+                    }`}
+                  >
+                    <span className="text-lg">{brand.icon}</span>
+                    <span className="text-[10px] font-medium text-gray-600">{brand.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-lastFourDigits">4 Ultimos Digitos</Label>
+                <Input
+                  id="edit-lastFourDigits"
+                  name="lastFourDigits"
+                  defaultValue={editingCard?.lastFourDigits || ''}
+                  placeholder="1234"
+                  maxLength={4}
+                  pattern="[0-9]{4}"
+                  disabled={isPending}
+                  className="h-11 text-center font-mono text-lg tracking-widest"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-card-limit">Limite (R$)</Label>
+                <Input
+                  id="edit-card-limit"
+                  name="limit"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={editingCard?.limit}
+                  required
+                  disabled={isPending}
+                  className="h-11 font-semibold"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-closingDay">Dia Fechamento</Label>
+                <Input
+                  id="edit-closingDay"
+                  name="closingDay"
+                  type="number"
+                  min="1"
+                  max="31"
+                  defaultValue={editingCard?.closingDay}
+                  required
+                  disabled={isPending}
+                  className="h-11 text-center text-lg font-semibold"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-dueDay">Dia Vencimento</Label>
+                <Input
+                  id="edit-dueDay"
+                  name="dueDay"
+                  type="number"
+                  min="1"
+                  max="31"
+                  defaultValue={editingCard?.dueDay}
+                  required
+                  disabled={isPending}
+                  className="h-11 text-center text-lg font-semibold"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditingCard(null)}
+                disabled={isPending}
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={isPending}
+                className="flex-1"
+                style={{ backgroundColor: '#3B82F6' }}
+              >
+                {isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  'Salvar Alteracoes'
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -272,7 +495,7 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
                   Nova Compra
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[450px]">
+              <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Nova Compra no Cartao</DialogTitle>
                 </DialogHeader>
@@ -294,7 +517,7 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
                   Novo Cartao
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[450px]">
+              <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Criar Cartao</DialogTitle>
                 </DialogHeader>
@@ -503,18 +726,28 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
                       backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0.1) 100%)',
                     }}
                   >
-                    {/* Delete button */}
-                    <button
-                      onClick={() => handleDeleteCard(card.id, card.name)}
-                      disabled={deletingId === card.id}
-                      className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 text-white/80 hover:bg-white/30 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
-                    >
-                      {deletingId === card.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </button>
+                    {/* Action buttons */}
+                    <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <button
+                        onClick={() => openEditCard(card)}
+                        className="w-8 h-8 rounded-full bg-white/20 text-white/80 hover:bg-white/30 hover:text-white flex items-center justify-center"
+                        title="Editar cartao"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteCardModal({ id: card.id, name: card.name })}
+                        disabled={deletingId === card.id}
+                        className="w-8 h-8 rounded-full bg-white/20 text-white/80 hover:bg-red-500/80 hover:text-white flex items-center justify-center"
+                        title="Excluir cartao"
+                      >
+                        {deletingId === card.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
 
                     {/* Card chip */}
                     <div className="w-10 h-8 bg-gradient-to-br from-yellow-300 to-yellow-500 rounded-md mb-6 flex items-center justify-center">
@@ -648,6 +881,38 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
                         <p className="text-2xl font-bold text-amber-400">{formatCurrency(invoicePending)}</p>
                       </div>
                     </div>
+
+                    {/* Mark Invoice as Paid Button */}
+                    {invoiceInstallments.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-white/20">
+                        <Button
+                          onClick={handleToggleInvoice}
+                          disabled={isPending}
+                          className={`w-full ${
+                            invoiceInstallments.every(i => i.isPaid)
+                              ? 'bg-gray-600 hover:bg-gray-700'
+                              : 'bg-emerald-600 hover:bg-emerald-700'
+                          }`}
+                        >
+                          {isPending ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Processando...
+                            </>
+                          ) : invoiceInstallments.every(i => i.isPaid) ? (
+                            <>
+                              <X className="mr-2 h-4 w-4" />
+                              Desmarcar Fatura como Paga
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="mr-2 h-4 w-4" />
+                              Marcar Fatura como Paga
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
                   </Card>
                 )}
 
@@ -772,7 +1037,7 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleDeleteTransaction(transaction.id, transaction.description)}
+                                onClick={() => setDeleteTransactionModal({ id: transaction.id, description: transaction.description })}
                                 disabled={deletingId === transaction.id}
                                 className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
                                 title="Excluir compra"

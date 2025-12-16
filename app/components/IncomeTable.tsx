@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { deleteIncome } from '@/app/actions/income'
 import { Trash2, TrendingUp, Calendar, Loader2 } from 'lucide-react'
 import Toast from './Toast'
+import ConfirmModal from './ConfirmModal'
 
 interface Income {
   id: string
@@ -39,6 +40,7 @@ interface IncomeTableProps {
 export default function IncomeTable({ incomes, searchFilter = '' }: IncomeTableProps) {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [deleteModal, setDeleteModal] = useState<{ id: string; description: string } | null>(null)
 
   const filteredIncomes = incomes.filter(inc =>
     inc.description.toLowerCase().includes(searchFilter.toLowerCase()) ||
@@ -49,17 +51,17 @@ export default function IncomeTable({ incomes, searchFilter = '' }: IncomeTableP
     new Date(b.date).getTime() - new Date(a.date).getTime()
   )
 
-  async function handleDelete(id: string, description: string) {
-    if (confirm(`Excluir "${description}"?`)) {
-      setLoadingId(id)
-      const result = await deleteIncome(id)
-      if (result?.success) {
-        setToast({ message: result.message!, type: 'success' })
-      } else {
-        setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
-      }
-      setLoadingId(null)
+  async function handleDelete() {
+    if (!deleteModal) return
+    setLoadingId(deleteModal.id)
+    const result = await deleteIncome(deleteModal.id)
+    if (result?.success) {
+      setToast({ message: result.message!, type: 'success' })
+    } else {
+      setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
     }
+    setLoadingId(null)
+    setDeleteModal(null)
   }
 
   if (sortedIncomes.length === 0) {
@@ -85,6 +87,15 @@ export default function IncomeTable({ incomes, searchFilter = '' }: IncomeTableP
           onClose={() => setToast(null)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={!!deleteModal}
+        onClose={() => setDeleteModal(null)}
+        onConfirm={handleDelete}
+        title="Excluir receita"
+        description={`Tem certeza que deseja excluir "${deleteModal?.description}"? Esta acao nao pode ser desfeita.`}
+        isLoading={!!loadingId}
+      />
 
       <div className="divide-y divide-gray-100">
         {sortedIncomes.map((inc) => (
@@ -136,7 +147,7 @@ export default function IncomeTable({ incomes, searchFilter = '' }: IncomeTableP
               </span>
 
               <button
-                onClick={() => handleDelete(inc.id, inc.description)}
+                onClick={() => setDeleteModal({ id: inc.id, description: inc.description })}
                 disabled={loadingId === inc.id}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
               >

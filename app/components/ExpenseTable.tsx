@@ -5,6 +5,7 @@ import { deleteExpense, markExpenseAsPaid } from '@/app/actions/expenses'
 import { markInstallmentAsPaid, markInstallmentAsUnpaid, deleteTransaction } from '@/app/actions/cards'
 import { Trash2, TrendingDown, Calendar, Check, CreditCard, Clock, Loader2 } from 'lucide-react'
 import Toast from './Toast'
+import ConfirmModal from './ConfirmModal'
 
 interface Expense {
   id: string
@@ -112,6 +113,7 @@ export default function ExpenseTable({
 }: ExpenseTableProps) {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [deleteModal, setDeleteModal] = useState<UnifiedExpense | null>(null)
 
   // Get installments from transactions (filtered by period if needed)
   const cardInstallments: UnifiedExpense[] = transactions.flatMap(t =>
@@ -194,32 +196,28 @@ export default function ExpenseTable({
     setLoadingId(null)
   }
 
-  async function handleDelete(exp: UnifiedExpense) {
-    const confirmMsg = exp.isCardExpense
-      ? `Excluir compra "${exp.description}"? Todas as parcelas serao removidas.`
-      : `Excluir "${exp.description}"?`
+  async function handleDelete() {
+    if (!deleteModal) return
+    setLoadingId(deleteModal.id)
 
-    if (confirm(confirmMsg)) {
-      setLoadingId(exp.id)
-
-      if (exp.isCardExpense && exp.transactionId) {
-        const result = await deleteTransaction(exp.transactionId)
-        if (result?.success) {
-          setToast({ message: result.message!, type: 'success' })
-        } else {
-          setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
-        }
+    if (deleteModal.isCardExpense && deleteModal.transactionId) {
+      const result = await deleteTransaction(deleteModal.transactionId)
+      if (result?.success) {
+        setToast({ message: result.message!, type: 'success' })
       } else {
-        const result = await deleteExpense(exp.id)
-        if (result?.success) {
-          setToast({ message: result.message!, type: 'success' })
-        } else {
-          setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
-        }
+        setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
       }
-
-      setLoadingId(null)
+    } else {
+      const result = await deleteExpense(deleteModal.id)
+      if (result?.success) {
+        setToast({ message: result.message!, type: 'success' })
+      } else {
+        setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
+      }
     }
+
+    setLoadingId(null)
+    setDeleteModal(null)
   }
 
   if (sortedExpenses.length === 0) {
@@ -245,6 +243,19 @@ export default function ExpenseTable({
           onClose={() => setToast(null)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={!!deleteModal}
+        onClose={() => setDeleteModal(null)}
+        onConfirm={handleDelete}
+        title={deleteModal?.isCardExpense ? 'Excluir compra' : 'Excluir despesa'}
+        description={
+          deleteModal?.isCardExpense
+            ? `Tem certeza que deseja excluir "${deleteModal?.description}"? Todas as parcelas serao removidas.`
+            : `Tem certeza que deseja excluir "${deleteModal?.description}"? Esta acao nao pode ser desfeita.`
+        }
+        isLoading={!!loadingId}
+      />
 
       <div className="divide-y divide-gray-100">
         {sortedExpenses.map((exp) => (
@@ -361,7 +372,7 @@ export default function ExpenseTable({
 
                 {/* Delete button */}
                 <button
-                  onClick={() => handleDelete(exp)}
+                  onClick={() => setDeleteModal(exp)}
                   disabled={loadingId === exp.id}
                   className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
                   title={exp.isCardExpense ? 'Excluir compra (todas parcelas)' : 'Excluir'}

@@ -72,34 +72,6 @@ function calculateFirstInvoice(purchaseDate: Date, closingDay: number, dueDay: n
   }
 }
 
-// Gera lista de faturas disponiveis (6 meses para tras e 12 para frente)
-function generateInvoiceOptions(): { month: number; year: number; label: string }[] {
-  const options: { month: number; year: number; label: string }[] = []
-  const now = new Date()
-
-  // 6 meses para tras
-  for (let i = 6; i >= 1; i--) {
-    const date = addMonths(now, -i)
-    options.push({
-      month: date.getMonth(),
-      year: date.getFullYear(),
-      label: `${MONTHS[date.getMonth()]} ${date.getFullYear()}`
-    })
-  }
-
-  // Mes atual e 12 meses para frente
-  for (let i = 0; i <= 12; i++) {
-    const date = addMonths(now, i)
-    options.push({
-      month: date.getMonth(),
-      year: date.getFullYear(),
-      label: `${MONTHS[date.getMonth()]} ${date.getFullYear()}`
-    })
-  }
-
-  return options
-}
-
 export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTransactionFormProps) {
   const [isPending, startTransition] = useTransition()
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
@@ -109,27 +81,26 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
   const [amount, setAmount] = useState<string>('')
   const [paidInstallments, setPaidInstallments] = useState<number>(0)
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [customFirstInvoice, setCustomFirstInvoice] = useState<{ month: number; year: number } | null>(null)
+  const [customFirstInvoiceDate, setCustomFirstInvoiceDate] = useState<Date | undefined>(undefined)
 
   const card = cards.find(c => c.id === selectedCard)
-  const invoiceOptions = useMemo(() => generateInvoiceOptions(), [])
 
   // Calcula a primeira fatura automaticamente ou usa a customizada
   const firstInvoice = useMemo(() => {
     if (!card || !selectedDate) return null
 
-    if (customFirstInvoice) {
-      // Usa a fatura customizada
-      const dueDate = setDate(new Date(customFirstInvoice.year, customFirstInvoice.month, 1), card.dueDay)
+    if (customFirstInvoiceDate) {
+      // Usa a fatura customizada baseada na data selecionada
+      const dueDate = setDate(customFirstInvoiceDate, card.dueDay)
       return {
-        month: customFirstInvoice.month,
-        year: customFirstInvoice.year,
+        month: customFirstInvoiceDate.getMonth(),
+        year: customFirstInvoiceDate.getFullYear(),
         dueDate
       }
     }
 
     return calculateFirstInvoice(selectedDate, card.closingDay, card.dueDay)
-  }, [card, selectedDate, customFirstInvoice])
+  }, [card, selectedDate, customFirstInvoiceDate])
 
   // Preview das parcelas
   const installmentsPreview = useMemo(() => {
@@ -181,9 +152,9 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
     }
 
     // Se tem primeira fatura customizada, envia
-    if (customFirstInvoice) {
-      formData.set('firstInvoiceMonth', customFirstInvoice.month.toString())
-      formData.set('firstInvoiceYear', customFirstInvoice.year.toString())
+    if (customFirstInvoiceDate) {
+      formData.set('firstInvoiceMonth', customFirstInvoiceDate.getMonth().toString())
+      formData.set('firstInvoiceYear', customFirstInvoiceDate.getFullYear().toString())
     } else if (firstInvoice) {
       formData.set('firstInvoiceMonth', firstInvoice.month.toString())
       formData.set('firstInvoiceYear', firstInvoice.year.toString())
@@ -201,7 +172,7 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
         setSelectedDate(new Date())
         setAmount('')
         setPaidInstallments(0)
-        setCustomFirstInvoice(null)
+        setCustomFirstInvoiceDate(undefined)
         setShowAdvanced(false)
         onSuccess?.()
       } else {
@@ -236,7 +207,7 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
                   type="button"
                   onClick={() => {
                     setSelectedCard(selectedCard === c.id ? '' : c.id)
-                    setCustomFirstInvoice(null) // Reset quando troca de cartao
+                    setCustomFirstInvoiceDate(undefined) // Reset quando troca de cartao
                   }}
                   disabled={isPending}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 border-2 ${
@@ -302,7 +273,7 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
               date={selectedDate}
               onDateChange={(date) => {
                 setSelectedDate(date)
-                setCustomFirstInvoice(null) // Reset quando muda a data
+                setCustomFirstInvoiceDate(undefined) // Reset quando muda a data
               }}
               placeholder="Data da compra"
               disabled={isPending}
@@ -390,20 +361,11 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
                 {/* Selecionar primeira fatura */}
                 <div className="space-y-2">
                   <Label className="text-xs text-gray-600">Ajustar primeira fatura</Label>
-                  <select
-                    value={customFirstInvoice ? `${customFirstInvoice.month}-${customFirstInvoice.year}` : `${firstInvoice.month}-${firstInvoice.year}`}
-                    onChange={(e) => {
-                      const [month, year] = e.target.value.split('-').map(Number)
-                      setCustomFirstInvoice({ month, year })
-                    }}
-                    className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm"
-                  >
-                    {invoiceOptions.map(opt => (
-                      <option key={`${opt.month}-${opt.year}`} value={`${opt.month}-${opt.year}`}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                  <DatePicker
+                    date={customFirstInvoiceDate || firstInvoice.dueDate}
+                    onDateChange={(date) => setCustomFirstInvoiceDate(date)}
+                    placeholder="Selecione a data da primeira fatura"
+                  />
                   <p className="text-xs text-gray-500">
                     Use isso se a compra foi feita em outra data ou para ajustar manualmente
                   </p>

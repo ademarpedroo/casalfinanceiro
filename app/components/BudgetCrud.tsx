@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dialog'
 import { Plus, Trash2, Search, PieChart, Loader2, ArrowUpDown, AlertCircle, CheckCircle2 } from 'lucide-react'
 import Toast from './Toast'
+import ConfirmModal from './ConfirmModal'
 
 interface Budget {
   id: string
@@ -90,6 +91,7 @@ export default function BudgetCrud({
   const [searchFilter, setSearchFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'warning' | 'exceeded'>('all')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [deleteModal, setDeleteModal] = useState<{ id: string; categoryName: string } | null>(null)
 
   let filteredBudgets = budgets.filter(b =>
     b.category.name.toLowerCase().includes(searchFilter.toLowerCase())
@@ -133,17 +135,17 @@ export default function BudgetCrud({
     })
   }
 
-  async function handleDelete(id: string, categoryName: string) {
-    if (confirm(`Excluir orcamento de "${categoryName}"?`)) {
-      setDeletingId(id)
-      const result = await deleteBudget(id)
-      if (result?.success) {
-        setToast({ message: 'Orcamento excluido!', type: 'success' })
-      } else {
-        setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
-      }
-      setDeletingId(null)
+  async function handleDelete() {
+    if (!deleteModal) return
+    setDeletingId(deleteModal.id)
+    const result = await deleteBudget(deleteModal.id)
+    if (result?.success) {
+      setToast({ message: 'Orcamento excluido!', type: 'success' })
+    } else {
+      setToast({ message: result?.error || 'Erro ao excluir', type: 'error' })
     }
+    setDeletingId(null)
+    setDeleteModal(null)
   }
 
   const toggleSelectAll = () => {
@@ -188,6 +190,15 @@ export default function BudgetCrud({
         />
       )}
 
+      <ConfirmModal
+        isOpen={!!deleteModal}
+        onClose={() => setDeleteModal(null)}
+        onConfirm={handleDelete}
+        title="Excluir orcamento"
+        description={`Tem certeza que deseja excluir o orcamento de "${deleteModal?.categoryName}"?`}
+        isLoading={!!deletingId}
+      />
+
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -229,7 +240,7 @@ export default function BudgetCrud({
                     Criar Orcamento
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[400px]">
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Criar Orcamento</DialogTitle>
                   </DialogHeader>
@@ -398,7 +409,7 @@ export default function BudgetCrud({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDelete(budget.id, budget.category.name)}
+                        onClick={() => setDeleteModal({ id: budget.id, categoryName: budget.category.name })}
                         disabled={deletingId === budget.id}
                         className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
                       >
