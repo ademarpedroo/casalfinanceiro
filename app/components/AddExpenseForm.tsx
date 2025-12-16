@@ -96,6 +96,9 @@ export default function AddExpenseForm({ categories, cards = [], onSuccess, comp
         if (selectedDate) {
           cardFormData.set('purchaseDate', selectedDate.toISOString().split('T')[0])
         }
+        if (selectedCategory) {
+          cardFormData.set('categoryId', selectedCategory)
+        }
 
         const result = await createTransaction(cardFormData)
 
@@ -294,33 +297,34 @@ export default function AddExpenseForm({ categories, cards = [], onSuccess, comp
           </div>
         )}
 
-        {/* Categoria (so aparece se NAO for cartao) */}
-        {paymentMethod === 'cash' && (
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-700">Categoria</Label>
-            <div className="flex flex-wrap gap-2">
-              {expenseCategories.map(cat => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setSelectedCategory(selectedCategory === cat.id ? '' : cat.id)}
-                  disabled={isPending}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    selectedCategory === cat.id
-                      ? 'ring-2 ring-offset-2 ring-orange-500 scale-105'
-                      : 'hover:scale-105 opacity-80 hover:opacity-100'
-                  }`}
-                  style={{
-                    backgroundColor: selectedCategory === cat.id ? cat.color : `${cat.color}15`,
-                    color: selectedCategory === cat.id ? 'white' : cat.color,
-                  }}
-                >
-                  {cat.icon} {cat.name}
-                </button>
-              ))}
-            </div>
+        {/* Categoria (aparece em ambos os modos) */}
+        <div className="space-y-2">
+          <Label className="text-sm font-medium text-gray-700">Categoria</Label>
+          <div className="flex flex-wrap gap-2">
+            {expenseCategories.map(cat => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setSelectedCategory(selectedCategory === cat.id ? '' : cat.id)}
+                disabled={isPending}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  selectedCategory === cat.id
+                    ? `ring-2 ring-offset-2 ${paymentMethod === 'card' ? 'ring-blue-500' : 'ring-orange-500'} scale-105`
+                    : 'hover:scale-105 opacity-80 hover:opacity-100'
+                }`}
+                style={{
+                  backgroundColor: selectedCategory === cat.id ? cat.color : `${cat.color}15`,
+                  color: selectedCategory === cat.id ? 'white' : cat.color,
+                }}
+              >
+                {cat.icon} {cat.name}
+              </button>
+            ))}
           </div>
-        )}
+          {expenseCategories.length === 0 && (
+            <p className="text-sm text-gray-400">Nenhuma categoria de despesa cadastrada</p>
+          )}
+        </div>
 
         {/* Conta Fixa (so aparece se NAO for cartao) */}
         {paymentMethod === 'cash' && (
