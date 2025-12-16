@@ -42,14 +42,24 @@ interface CreditCardType {
   transactions?: any[]
 }
 
+interface Category {
+  id: string
+  name: string
+  color: string
+  icon: string | null
+  type: string
+}
+
 interface Transaction {
   id: string
   cardId: string
+  categoryId?: string | null
   description: string
   totalAmount: number
   purchaseDate: Date
   installmentsCount: number
   card: CreditCardType
+  category?: Category | null
   installments: Installment[]
 }
 
@@ -116,9 +126,10 @@ const MONTHS = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julh
 interface CardCrudProps {
   cards: CreditCardType[]
   transactions?: Transaction[]
+  categories?: Category[]
 }
 
-export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
+export default function CardCrud({ cards, transactions = [], categories = [] }: CardCrudProps) {
   const [isPending, startTransition] = useTransition()
   const [isCardDialogOpen, setIsCardDialogOpen] = useState(false)
   const [isTransactionDialogOpen, setIsTransactionDialogOpen] = useState(false)
@@ -501,6 +512,7 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
                 </DialogHeader>
                 <AddCardTransactionForm
                   cards={cards}
+                  categories={categories}
                   onSuccess={() => setIsTransactionDialogOpen(false)}
                 />
               </DialogContent>
@@ -1066,6 +1078,7 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
         transaction={editingTransaction}
         isOpen={!!editingTransaction}
         onClose={() => setEditingTransaction(null)}
+        categories={categories}
       />
     </>
   )

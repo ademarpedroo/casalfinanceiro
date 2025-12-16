@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useMemo, useTransition, useEffect } from 'react'
-import { updateTransactionInvoice } from '@/app/actions/cards'
+import { updateTransaction } from '@/app/actions/cards'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { DatePicker } from '@/components/ui/date-picker'
 import {
@@ -11,9 +12,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Calendar, CheckCircle2, Clock, Loader2, Save, CreditCard } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Calendar, CheckCircle2, Clock, Loader2, Save, CreditCard, Pencil } from 'lucide-react'
 import { addMonths, setDate } from 'date-fns'
 import Toast from './Toast'
+
+interface Category {
+  id: string
+  name: string
+  color: string
+  icon: string | null
+  type: string
+}
 
 interface Transaction {
   id: string
@@ -21,6 +37,8 @@ interface Transaction {
   totalAmount: number
   purchaseDate: Date
   installmentsCount: number
+  categoryId?: string | null
+  category?: Category | null
   card: {
     id: string
     name: string
@@ -40,6 +58,7 @@ interface EditTransactionModalProps {
   transaction: Transaction | null
   isOpen: boolean
   onClose: () => void
+  categories?: Category[]
 }
 
 const CARD_COLORS: Record<string, string> = {
@@ -58,19 +77,32 @@ const MONTHS = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ]
 
+const INSTALLMENT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
 
-export default function EditTransactionModal({ transaction, isOpen, onClose }: EditTransactionModalProps) {
+export default function EditTransactionModal({ transaction, isOpen, onClose, categories = [] }: EditTransactionModalProps) {
   const [isPending, startTransition] = useTransition()
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+
+  // Form states
+  const [description, setDescription] = useState('')
+  const [totalAmount, setTotalAmount] = useState('')
+  const [installmentsCount, setInstallmentsCount] = useState(1)
+  const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [firstInvoiceDate, setFirstInvoiceDate] = useState<Date | undefined>(undefined)
   const [paidInstallments, setPaidInstallments] = useState<number>(0)
 
   // Atualiza estados quando a transacao muda ou modal abre
   useEffect(() => {
     if (transaction && isOpen) {
+      setDescription(transaction.description)
+      setTotalAmount(transaction.totalAmount.toString())
+      setInstallmentsCount(transaction.installmentsCount)
+      setSelectedCategory(transaction.categoryId || '')
+
       // Detecta a primeira fatura atual baseado na primeira parcela
       if (transaction.installments.length > 0) {
         const firstInstallment = transaction.installments[0]
@@ -84,40 +116,44 @@ export default function EditTransactionModal({ transaction, isOpen, onClose }: E
 
   // Preview das parcelas
   const installmentsPreview = useMemo(() => {
-    if (!transaction || !firstInvoiceDate) return []
+    if (!transaction || !firstInvoiceDate || !totalAmount) return []
 
+    const amount = parseFloat(totalAmount) || 0
     const firstDueDate = setDate(firstInvoiceDate, transaction.card.dueDay)
 
     const preview: { number: number; month: string; year: number; amount: number; isPaid: boolean; dueDate: Date }[] = []
 
-    for (let i = 0; i < transaction.installmentsCount; i++) {
+    for (let i = 0; i < installmentsCount; i++) {
       const dueDate = addMonths(firstDueDate, i)
       preview.push({
         number: i + 1,
         month: MONTHS[dueDate.getMonth()],
         year: dueDate.getFullYear(),
-        amount: transaction.installments[i]?.amount || transaction.totalAmount / transaction.installmentsCount,
+        amount: amount / installmentsCount,
         isPaid: i < paidInstallments,
         dueDate
       })
     }
 
     return preview
-  }, [transaction, firstInvoiceDate, paidInstallments])
+  }, [transaction, firstInvoiceDate, paidInstallments, totalAmount, installmentsCount])
 
-  const pendingInstallments = transaction ? transaction.installmentsCount - paidInstallments : 0
-  const pendingAmount = transaction ? (transaction.totalAmount / transaction.installmentsCount) * pendingInstallments : 0
+  const pendingInstallments = installmentsCount - paidInstallments
+  const pendingAmount = totalAmount ? (parseFloat(totalAmount) / installmentsCount) * pendingInstallments : 0
 
   async function handleSave() {
     if (!transaction || !firstInvoiceDate) return
 
     startTransition(async () => {
-      const result = await updateTransactionInvoice(
-        transaction.id,
-        firstInvoiceDate.getMonth(),
-        firstInvoiceDate.getFullYear(),
-        paidInstallments
-      )
+      const result = await updateTransaction(transaction.id, {
+        description,
+        totalAmount: parseFloat(totalAmount),
+        installmentsCount,
+        categoryId: selectedCategory || null,
+        firstInvoiceMonth: firstInvoiceDate.getMonth(),
+        firstInvoiceYear: firstInvoiceDate.getFullYear(),
+        paidInstallmentsCount: paidInstallments
+      })
 
       if (result?.success) {
         setToast({ message: result.message!, type: 'success' })
@@ -131,6 +167,9 @@ export default function EditTransactionModal({ transaction, isOpen, onClose }: E
   }
 
   if (!transaction) return null
+
+  // Filter categories to only show expense type
+  const expenseCategories = categories.filter(c => c.type === 'expense')
 
   return (
     <>
@@ -146,42 +185,115 @@ export default function EditTransactionModal({ transaction, isOpen, onClose }: E
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-blue-500" />
-              Ajustar Parcelas
+              <Pencil className="w-5 h-5 text-blue-500" />
+              Editar Compra
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 mt-2">
-            {/* Info da compra */}
-            <div className="p-4 bg-gray-50 rounded-xl border">
-              <div className="flex items-center gap-3 mb-3">
-                <div
-                  className="w-10 h-6 rounded flex items-center justify-center"
-                  style={{ backgroundColor: CARD_COLORS[transaction.card.color] || '#820AD1' }}
-                >
-                  <CreditCard className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">{transaction.description}</h3>
-                  <p className="text-sm text-gray-500">{transaction.card.name}</p>
-                </div>
+            {/* Info do cartao */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border">
+              <div
+                className="w-10 h-6 rounded flex items-center justify-center"
+                style={{ backgroundColor: CARD_COLORS[transaction.card.color] || '#820AD1' }}
+              >
+                <CreditCard className="w-4 h-4 text-white" />
               </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-white rounded-lg p-2 border">
-                  <p className="text-xs text-gray-500">Total</p>
-                  <p className="font-semibold text-gray-900">{formatCurrency(transaction.totalAmount)}</p>
-                </div>
-                <div className="bg-white rounded-lg p-2 border">
-                  <p className="text-xs text-gray-500">Parcelas</p>
-                  <p className="font-semibold text-gray-900">{transaction.installmentsCount}x</p>
-                </div>
-                <div className="bg-white rounded-lg p-2 border">
-                  <p className="text-xs text-gray-500">Por Parcela</p>
-                  <p className="font-semibold text-blue-600">
-                    {formatCurrency(transaction.totalAmount / transaction.installmentsCount)}
-                  </p>
-                </div>
+              <span className="font-medium text-gray-700">{transaction.card.name}</span>
+            </div>
+
+            {/* Descricao */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Descricao</Label>
+              <Input
+                id="edit-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Ex: Supermercado, Amazon..."
+                disabled={isPending}
+                className="h-11"
+              />
+            </div>
+
+            {/* Valor Total e Categoria */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-amount">Valor Total (R$)</Label>
+                <Input
+                  id="edit-amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={totalAmount}
+                  onChange={(e) => setTotalAmount(e.target.value)}
+                  placeholder="0,00"
+                  disabled={isPending}
+                  className="h-11 font-semibold"
+                />
               </div>
+
+              <div className="space-y-2">
+                <Label>Categoria</Label>
+                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Selecione (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Sem categoria</SelectItem>
+                    {expenseCategories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{cat.icon || '📁'}</span>
+                          <span>{cat.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Parcelas */}
+            <div className="space-y-2">
+              <Label>Numero de Parcelas</Label>
+              <div className="flex flex-wrap gap-2">
+                {INSTALLMENT_OPTIONS.map(num => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => {
+                      setInstallmentsCount(num)
+                      if (paidInstallments >= num) {
+                        setPaidInstallments(Math.max(0, num - 1))
+                      }
+                    }}
+                    disabled={isPending}
+                    className={`w-10 h-10 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                      installmentsCount === num
+                        ? 'bg-blue-500 text-white scale-105 shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {num}x
+                  </button>
+                ))}
+              </div>
+              {installmentsCount > 12 && (
+                <div className="flex items-center gap-2 mt-2">
+                  <Label className="text-sm">Mais parcelas:</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="48"
+                    value={installmentsCount}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 1
+                      setInstallmentsCount(Math.min(48, Math.max(1, val)))
+                    }}
+                    className="w-20 h-9"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Selecionar primeira fatura com DatePicker */}
@@ -198,25 +310,25 @@ export default function EditTransactionModal({ transaction, isOpen, onClose }: E
             </div>
 
             {/* Parcelas ja pagas */}
-            {transaction.installmentsCount > 1 && (
+            {installmentsCount > 1 && (
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Parcelas ja pagas</Label>
                 <div className="flex items-center gap-3">
                   <input
                     type="range"
                     min="0"
-                    max={transaction.installmentsCount - 1}
+                    max={installmentsCount - 1}
                     value={paidInstallments}
                     onChange={(e) => setPaidInstallments(parseInt(e.target.value))}
                     className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                   />
                   <span className="w-20 text-center font-semibold text-sm bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg">
-                    {paidInstallments}/{transaction.installmentsCount}
+                    {paidInstallments}/{installmentsCount}
                   </span>
                 </div>
-                {paidInstallments > 0 && (
+                {paidInstallments > 0 && totalAmount && (
                   <p className="text-xs text-emerald-600">
-                    {paidInstallments} parcela{paidInstallments > 1 ? 's' : ''} ja paga{paidInstallments > 1 ? 's' : ''} ({formatCurrency((transaction.totalAmount / transaction.installmentsCount) * paidInstallments)})
+                    {paidInstallments} parcela{paidInstallments > 1 ? 's' : ''} ja paga{paidInstallments > 1 ? 's' : ''} ({formatCurrency((parseFloat(totalAmount) / installmentsCount) * paidInstallments)})
                   </p>
                 )}
               </div>
@@ -241,7 +353,7 @@ export default function EditTransactionModal({ transaction, isOpen, onClose }: E
                           <Clock className="w-4 h-4 text-gray-400" />
                         )}
                         <span className={`font-mono ${inst.isPaid ? 'text-emerald-700' : 'text-gray-700'}`}>
-                          {inst.number}/{transaction.installmentsCount}
+                          {inst.number}/{installmentsCount}
                         </span>
                         <span className={inst.isPaid ? 'text-emerald-600' : 'text-gray-500'}>
                           {inst.month} {inst.year}
@@ -286,7 +398,7 @@ export default function EditTransactionModal({ transaction, isOpen, onClose }: E
               <Button
                 type="button"
                 onClick={handleSave}
-                disabled={isPending || !firstInvoiceDate}
+                disabled={isPending || !firstInvoiceDate || !description || !totalAmount}
                 className="flex-1 bg-blue-500 hover:bg-blue-600"
               >
                 {isPending ? (

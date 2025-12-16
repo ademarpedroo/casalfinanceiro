@@ -81,9 +81,14 @@ export function parseFormData<T>(
       else if (!isNaN(Number(value)) && value !== '') {
         rawData[key] = Number(value)
       }
-      // Handle dates (YYYY-MM-DD format)
+      // Handle dates (YYYY-MM-DD format) - use noon to avoid timezone issues
       else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        rawData[key] = new Date(value)
+        rawData[key] = new Date(value + 'T12:00:00')
+      }
+      // Handle ISO date strings (from Date.toISOString())
+      else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+        const dateOnly = value.split('T')[0]
+        rawData[key] = new Date(dateOnly + 'T12:00:00')
       }
       // Everything else as string
       else {

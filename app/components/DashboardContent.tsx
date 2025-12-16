@@ -756,7 +756,7 @@ export default function DashboardContent({
   if (activeSection === 'cartoes') {
     return (
       <>
-        <CardCrud cards={cards} transactions={transactions} />
+        <CardCrud cards={cards} transactions={transactions} categories={categories} />
         <FloatingActionButton categories={categories} />
       </>
     )

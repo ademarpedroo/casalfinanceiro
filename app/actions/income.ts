@@ -2,7 +2,6 @@
 
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
-import { startOfDay } from 'date-fns'
 import { incomeSchema, parseFormData } from '@/lib/validations'
 import { auth } from '@/auth'
 
@@ -24,7 +23,7 @@ export async function createIncome(data: FormData) {
         userId: session.user.id,
         description: result.data.description,
         amount: result.data.amount,
-        date: startOfDay(result.data.date),
+        date: result.data.date,
         categoryId: result.data.categoryId || null
       }
     })
@@ -76,7 +75,7 @@ export async function updateIncome(id: string, data: FormData) {
       data: {
         description: result.data.description,
         amount: result.data.amount,
-        date: startOfDay(result.data.date),
+        date: result.data.date,
         categoryId: result.data.categoryId || null
       }
     })

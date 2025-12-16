@@ -181,6 +181,7 @@ export async function createTransaction(data: FormData) {
     const paidInstallments = parseInt(data.get('paidInstallments') as string) || 0
     const firstInvoiceMonth = data.get('firstInvoiceMonth') ? parseInt(data.get('firstInvoiceMonth') as string) : null
     const firstInvoiceYear = data.get('firstInvoiceYear') ? parseInt(data.get('firstInvoiceYear') as string) : null
+    const categoryId = data.get('categoryId') as string || null
 
     const purchaseDate = startOfDay(parseISO(purchaseDateRaw))
 
@@ -227,6 +228,7 @@ export async function createTransaction(data: FormData) {
     const transaction = await prisma.cardTransaction.create({
       data: {
         cardId,
+        categoryId,
         description,
         totalAmount: amount,
         purchaseDate,
@@ -346,6 +348,7 @@ export async function getTransactions() {
     },
     include: {
       card: true,
+      category: true,
       installments: {
         orderBy: { number: 'asc' }
       }
@@ -590,6 +593,131 @@ export async function updateTransactionInvoice(
       success: true,
       message: `Parcelas atualizadas! Primeira fatura: ${['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][firstInvoiceMonth]} ${firstInvoiceYear}`
     }
+  } catch (error) {
+    console.error('Error updating transaction:', error)
+    return { error: 'Erro ao atualizar transação. Tente novamente.' }
+  }
+}
+
+// Full transaction update (description, amount, installments, category, dates)
+export async function updateTransaction(
+  transactionId: string,
+  data: {
+    description: string
+    totalAmount: number
+    installmentsCount: number
+    categoryId: string | null
+    firstInvoiceMonth: number
+    firstInvoiceYear: number
+    paidInstallmentsCount: number
+  }
+) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { error: 'Você precisa estar logado' }
+    }
+
+    // Get transaction with card info
+    const transaction = await prisma.cardTransaction.findUnique({
+      where: { id: transactionId },
+      include: {
+        card: true,
+        installments: { orderBy: { number: 'asc' } }
+      }
+    })
+
+    if (!transaction) {
+      return { error: 'Transação não encontrada' }
+    }
+
+    if (transaction.card.userId !== session.user.id) {
+      return { error: 'Você não tem permissão para editar esta transação' }
+    }
+
+    // Validations
+    if (!data.description || data.description.trim().length === 0) {
+      return { error: 'Descrição é obrigatória' }
+    }
+    if (data.totalAmount <= 0) {
+      return { error: 'Valor deve ser maior que zero' }
+    }
+    if (data.installmentsCount < 1 || data.installmentsCount > 48) {
+      return { error: 'Número de parcelas deve ser entre 1 e 48' }
+    }
+    if (data.paidInstallmentsCount >= data.installmentsCount) {
+      return { error: 'Parcelas pagas não podem ser maior ou igual ao total' }
+    }
+
+    // Update transaction basic data
+    await prisma.cardTransaction.update({
+      where: { id: transactionId },
+      data: {
+        description: data.description.trim(),
+        totalAmount: data.totalAmount,
+        installmentsCount: data.installmentsCount,
+        categoryId: data.categoryId
+      }
+    })
+
+    // Calculate new first due date
+    const firstDueDate = setDate(
+      new Date(data.firstInvoiceYear, data.firstInvoiceMonth, 1),
+      transaction.card.dueDay
+    )
+
+    // If installments count changed, delete old and create new
+    if (data.installmentsCount !== transaction.installmentsCount) {
+      // Delete old installments
+      await prisma.installment.deleteMany({
+        where: { transactionId }
+      })
+
+      // Create new installments
+      const installmentAmount = parseFloat((data.totalAmount / data.installmentsCount).toFixed(2))
+      const lastInstallmentAmount = parseFloat((data.totalAmount - (installmentAmount * (data.installmentsCount - 1))).toFixed(2))
+
+      for (let i = 0; i < data.installmentsCount; i++) {
+        const dueDate = addMonths(firstDueDate, i)
+        const isAlreadyPaid = i < data.paidInstallmentsCount
+        const isLastInstallment = i === data.installmentsCount - 1
+
+        await prisma.installment.create({
+          data: {
+            transactionId,
+            number: i + 1,
+            amount: isLastInstallment ? lastInstallmentAmount : installmentAmount,
+            dueDate,
+            isPaid: isAlreadyPaid,
+            paidAt: isAlreadyPaid ? new Date() : null
+          }
+        })
+      }
+    } else {
+      // Just update existing installments with new values
+      const installmentAmount = parseFloat((data.totalAmount / data.installmentsCount).toFixed(2))
+      const lastInstallmentAmount = parseFloat((data.totalAmount - (installmentAmount * (data.installmentsCount - 1))).toFixed(2))
+
+      for (let i = 0; i < transaction.installments.length; i++) {
+        const installment = transaction.installments[i]
+        const newDueDate = addMonths(firstDueDate, i)
+        const shouldBePaid = i < data.paidInstallmentsCount
+        const isLastInstallment = i === data.installmentsCount - 1
+
+        await prisma.installment.update({
+          where: { id: installment.id },
+          data: {
+            amount: isLastInstallment ? lastInstallmentAmount : installmentAmount,
+            dueDate: newDueDate,
+            isPaid: shouldBePaid,
+            paidAt: shouldBePaid ? (installment.paidAt || new Date()) : null
+          }
+        })
+      }
+    }
+
+    revalidatePath('/')
+    return { success: true, message: 'Transação atualizada com sucesso!' }
   } catch (error) {
     console.error('Error updating transaction:', error)
     return { error: 'Erro ao atualizar transação. Tente novamente.' }

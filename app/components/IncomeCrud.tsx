@@ -12,7 +12,9 @@ interface Income {
   description: string
   amount: number
   date: Date
+  categoryId?: string | null
   category?: {
+    id: string
     name: string
     color: string
     icon: string | null
@@ -142,7 +144,7 @@ export default function IncomeCrud({ incomes, categories }: IncomeCrudProps) {
       accentColor="#10B981"
       extraFilters={periodFilterComponent}
     >
-      <IncomeTable incomes={filteredIncomes} searchFilter={searchFilter} />
+      <IncomeTable incomes={filteredIncomes} categories={categories} searchFilter={searchFilter} />
     </CrudLayout>
   )
 }

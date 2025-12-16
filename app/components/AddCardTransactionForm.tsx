@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { DatePicker } from '@/components/ui/date-picker'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { CreditCard, Loader2, ShoppingCart, Calendar, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { addMonths, setDate, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -21,8 +28,17 @@ interface Card {
   lastFourDigits?: string | null
 }
 
+interface Category {
+  id: string
+  name: string
+  color: string
+  icon: string | null
+  type: string
+}
+
 interface AddCardTransactionFormProps {
   cards: Card[]
+  categories?: Category[]
   onSuccess?: () => void
 }
 
@@ -72,7 +88,7 @@ function calculateFirstInvoice(purchaseDate: Date, closingDay: number, dueDay: n
   }
 }
 
-export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTransactionFormProps) {
+export default function AddCardTransactionForm({ cards, categories = [], onSuccess }: AddCardTransactionFormProps) {
   const [isPending, startTransition] = useTransition()
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [selectedCard, setSelectedCard] = useState<string>('')
@@ -82,6 +98,9 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
   const [paidInstallments, setPaidInstallments] = useState<number>(0)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [customFirstInvoiceDate, setCustomFirstInvoiceDate] = useState<Date | undefined>(undefined)
+  const [selectedCategory, setSelectedCategory] = useState<string>('')
+
+  const expenseCategories = categories.filter(c => c.type === 'expense')
 
   const card = cards.find(c => c.id === selectedCard)
 
@@ -146,6 +165,9 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
     formData.set('cardId', selectedCard)
     formData.set('installments', selectedInstallments.toString())
     formData.set('paidInstallments', paidInstallments.toString())
+    if (selectedCategory) {
+      formData.set('categoryId', selectedCategory)
+    }
 
     if (selectedDate) {
       formData.set('purchaseDate', selectedDate.toISOString().split('T')[0])
@@ -174,6 +196,7 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
         setPaidInstallments(0)
         setCustomFirstInvoiceDate(undefined)
         setShowAdvanced(false)
+        setSelectedCategory('')
         onSuccess?.()
       } else {
         setToast({ message: result?.error || 'Erro desconhecido', type: 'error' })
@@ -229,19 +252,41 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
           )}
         </div>
 
-        {/* Descricao */}
-        <div className="space-y-2">
-          <Label htmlFor="transaction-description" className="text-sm font-medium text-gray-700">
-            Descricao
-          </Label>
-          <Input
-            id="transaction-description"
-            name="description"
-            placeholder="Ex: Supermercado, Restaurante, Amazon..."
-            required
-            disabled={isPending}
-            className="h-11 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
-          />
+        {/* Descricao e Categoria */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="transaction-description" className="text-sm font-medium text-gray-700">
+              Descricao
+            </Label>
+            <Input
+              id="transaction-description"
+              name="description"
+              placeholder="Ex: Supermercado, Amazon..."
+              required
+              disabled={isPending}
+              className="h-11 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">Categoria</Label>
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <SelectTrigger className="h-11">
+                <SelectValue placeholder="Selecione (opcional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Sem categoria</SelectItem>
+                {expenseCategories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    <div className="flex items-center gap-2">
+                      <span>{cat.icon || '📁'}</span>
+                      <span>{cat.name}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Valor e Data */}

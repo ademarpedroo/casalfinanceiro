@@ -2,7 +2,6 @@
 
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
-import { startOfDay } from 'date-fns'
 import { expenseSchema, parseFormData } from '@/lib/validations'
 import { auth } from '@/auth'
 
@@ -24,7 +23,7 @@ export async function createExpense(data: FormData) {
         userId: session.user.id,
         description: result.data.description,
         amount: result.data.amount,
-        dueDate: startOfDay(result.data.dueDate),
+        dueDate: result.data.dueDate,
         categoryId: result.data.categoryId || null,
         isFixed: result.data.isFixed
       }
@@ -106,7 +105,7 @@ export async function updateExpense(id: string, data: FormData) {
       data: {
         description: result.data.description,
         amount: result.data.amount,
-        dueDate: startOfDay(result.data.dueDate),
+        dueDate: result.data.dueDate,
         categoryId: result.data.categoryId || null,
         isFixed: result.data.isFixed
       }
@@ -254,7 +253,7 @@ export async function createQuickExpense(data: {
         userId: session.user.id,
         description: data.description,
         amount: data.amount,
-        dueDate: startOfDay(data.date),
+        dueDate: data.date,
         categoryId: data.categoryId || null,
         isFixed: false,
         isPaid: true,

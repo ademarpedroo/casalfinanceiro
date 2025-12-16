@@ -60,18 +60,19 @@ model VerificationToken {
 }
 
 model Category {
-  id        String    @id @default(uuid())
-  userId    String
-  name      String
-  type      String
-  color     String    @default("#3b82f6")
-  icon      String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  budgets   Budget[]
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expenses  Expense[]
-  incomes   Income[]
+  id               String            @id @default(uuid())
+  userId           String
+  name             String
+  type             String
+  color            String            @default("#3b82f6")
+  icon             String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  budgets          Budget[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses         Expense[]
+  incomes          Income[]
+  cardTransactions CardTransaction[]
 }
 
 model Budget {
@@ -138,6 +139,7 @@ model CreditCard {
 model CardTransaction {
   id                String        @id @default(uuid())
   cardId            String
+  categoryId        String?
   description       String
   totalAmount       Float
   purchaseDate      DateTime
@@ -145,6 +147,7 @@ model CardTransaction {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   card              CreditCard    @relation(fields: [cardId], references: [id])
+  category          Category?     @relation(fields: [categoryId], references: [id])
   installments      Installment[]
 }
 
