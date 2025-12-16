@@ -49,7 +49,7 @@ export default function DueReminderEmail({
     <Html>
       <Head />
       <Preview>
-        Voce tem {itemCount} {itemCount === 1 ? 'conta vencendo' : 'contas vencendo'} em breve - Total: {formatCurrency(totalAmount)}
+        {`Voce tem ${itemCount} ${itemCount === 1 ? 'conta vencendo' : 'contas vencendo'} em breve - Total: ${formatCurrency(totalAmount)}`}
       </Preview>
       <Body style={main}>
         <Container style={container}>

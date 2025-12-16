@@ -9,6 +9,8 @@ interface InvitePartnerModalProps {
   partnership: {
     id: string
     status: string
+    inviterId: string
+    inviteeId: string | null
     inviteeEmail: string
     inviter: { id: string; name: string | null; email: string | null; image: string | null }
     invitee: { id: string; name: string | null; email: string | null; image: string | null } | null

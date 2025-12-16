@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     // Busca todos os usuarios com email
     const users = await prisma.user.findMany({
       where: {
-        email: { not: null }
+        email: { not: '' }
       },
       select: {
         id: true,
