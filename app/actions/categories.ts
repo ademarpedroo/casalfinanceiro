@@ -166,3 +166,54 @@ export async function seedDefaultCategories(userId: string) {
     data: defaultCategories,
   })
 }
+
+// Funcao para remover categorias duplicadas
+export async function deduplicateCategories(userId: string) {
+  // Busca todas as categorias do usuario
+  const categories = await prisma.category.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'asc' }
+  })
+
+  // Agrupa por nome + tipo
+  const grouped: Record<string, typeof categories> = {}
+  for (const cat of categories) {
+    const key = `${cat.name.toLowerCase()}-${cat.type}`
+    if (!grouped[key]) {
+      grouped[key] = []
+    }
+    grouped[key].push(cat)
+  }
+
+  // Para cada grupo com duplicatas
+  for (const key in grouped) {
+    const group = grouped[key]
+    if (group.length <= 1) continue
+
+    // Mantém o primeiro (mais antigo), remove os outros
+    const [keep, ...duplicates] = group
+    const duplicateIds = duplicates.map(d => d.id)
+
+    // Atualiza referencias em Income
+    await prisma.income.updateMany({
+      where: { categoryId: { in: duplicateIds } },
+      data: { categoryId: keep.id }
+    })
+
+    // Atualiza referencias em Expense
+    await prisma.expense.updateMany({
+      where: { categoryId: { in: duplicateIds } },
+      data: { categoryId: keep.id }
+    })
+
+    // Deleta budgets duplicados (unique constraint: categoryId, month, year)
+    await prisma.budget.deleteMany({
+      where: { categoryId: { in: duplicateIds } }
+    })
+
+    // Deleta categorias duplicadas
+    await prisma.category.deleteMany({
+      where: { id: { in: duplicateIds } }
+    })
+  }
+}

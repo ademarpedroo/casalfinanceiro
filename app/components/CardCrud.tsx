@@ -24,9 +24,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Plus, Trash2, Search, CreditCard, Loader2, ArrowUpDown, ShoppingCart, Receipt, ChevronLeft, ChevronRight, Check, X } from 'lucide-react'
+import { Plus, Trash2, Search, CreditCard, Loader2, ArrowUpDown, ShoppingCart, Receipt, ChevronLeft, ChevronRight, Check, X, Pencil } from 'lucide-react'
 import Toast from './Toast'
 import AddCardTransactionForm from './AddCardTransactionForm'
+import EditTransactionModal from './EditTransactionModal'
 
 interface CreditCardType {
   id: string
@@ -126,6 +127,7 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
   const [selectedColor, setSelectedColor] = useState('nubank')
   const [selectedBrand, setSelectedBrand] = useState('mastercard')
   const [activeTab, setActiveTab] = useState('cartoes')
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
 
   // Invoice state
   const now = new Date()
@@ -478,81 +480,82 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
               </div>
             </div>
 
-            <div className="bg-white rounded-lg border border-gray-200">
-              {filteredCards.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
-                    <CreditCard className="w-8 h-8 text-blue-500" />
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhum cartao encontrado</h3>
-                  <p className="text-gray-500">
-                    {searchFilter ? 'Tente outro termo de busca' : 'Clique em "Novo Cartao" para adicionar'}
-                  </p>
+            {filteredCards.length === 0 ? (
+              <div className="bg-white rounded-lg border border-gray-200 text-center py-12">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
+                  <CreditCard className="w-8 h-8 text-blue-500" />
                 </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
-                      <TableHead>Cartao</TableHead>
-                      <TableHead>Bandeira</TableHead>
-                      <TableHead>Limite</TableHead>
-                      <TableHead>Fechamento</TableHead>
-                      <TableHead>Vencimento</TableHead>
-                      <TableHead className="w-12"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredCards.map((card) => (
-                      <TableRow key={card.id} className={deletingId === card.id ? 'opacity-50' : ''}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div
-                              className="w-10 h-7 rounded flex items-center justify-center text-white text-xs font-bold"
-                              style={{ backgroundColor: CARD_COLORS[card.color] || '#820AD1' }}
-                            >
-                              {card.lastFourDigits ? `•${card.lastFourDigits.slice(-2)}` : '••'}
-                            </div>
-                            <span className="font-medium text-gray-900">
-                              {card.name}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span>{CARD_BRANDS[card.brand]?.icon || '💳'}</span>
-                            <span className="text-gray-600 text-sm">{CARD_BRANDS[card.brand]?.label || 'Outro'}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-semibold text-gray-700">
-                          {formatCurrency(card.limit)}
-                        </TableCell>
-                        <TableCell className="text-gray-600">
-                          Dia {card.closingDay}
-                        </TableCell>
-                        <TableCell className="text-gray-600">
-                          Dia {card.dueDay}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteCard(card.id, card.name)}
-                            disabled={deletingId === card.id}
-                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
-                          >
-                            {deletingId === card.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhum cartao encontrado</h3>
+                <p className="text-gray-500">
+                  {searchFilter ? 'Tente outro termo de busca' : 'Clique em "Novo Cartao" para adicionar'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredCards.map((card) => (
+                  <div
+                    key={card.id}
+                    className={`group relative rounded-2xl p-5 text-white transition-all hover:scale-[1.02] hover:shadow-xl ${
+                      deletingId === card.id ? 'opacity-50' : ''
+                    }`}
+                    style={{
+                      backgroundColor: CARD_COLORS[card.color] || '#820AD1',
+                      backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0.1) 100%)',
+                    }}
+                  >
+                    {/* Delete button */}
+                    <button
+                      onClick={() => handleDeleteCard(card.id, card.name)}
+                      disabled={deletingId === card.id}
+                      className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 text-white/80 hover:bg-white/30 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      {deletingId === card.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
+
+                    {/* Card chip */}
+                    <div className="w-10 h-8 bg-gradient-to-br from-yellow-300 to-yellow-500 rounded-md mb-6 flex items-center justify-center">
+                      <div className="w-6 h-5 border-2 border-yellow-600/30 rounded-sm"></div>
+                    </div>
+
+                    {/* Card number hint */}
+                    <div className="font-mono text-lg tracking-widest mb-4 text-white/90">
+                      •••• •••• •••• {card.lastFourDigits || '••••'}
+                    </div>
+
+                    {/* Card name */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-white/60 uppercase tracking-wider">Nome</p>
+                        <p className="font-semibold text-lg">{card.name}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl">{CARD_BRANDS[card.brand]?.icon || '💳'}</p>
+                      </div>
+                    </div>
+
+                    {/* Card details */}
+                    <div className="mt-4 pt-4 border-t border-white/20 grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-xs text-white/60">Limite</p>
+                        <p className="font-semibold text-sm">{formatCurrency(card.limit)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-white/60">Fecha</p>
+                        <p className="font-semibold text-sm">Dia {card.closingDay}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-white/60">Vence</p>
+                        <p className="font-semibold text-sm">Dia {card.dueDay}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </TabsContent>
 
           {/* Fatura Tab */}
@@ -726,7 +729,7 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
                       <TableHead>Data</TableHead>
                       <TableHead>Parcelas</TableHead>
                       <TableHead className="text-right">Valor Total</TableHead>
-                      <TableHead className="w-12"></TableHead>
+                      <TableHead className="w-20"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -756,19 +759,31 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
                             {formatCurrency(transaction.totalAmount)}
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteTransaction(transaction.id, transaction.description)}
-                              disabled={deletingId === transaction.id}
-                              className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
-                            >
-                              {deletingId === transaction.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingTransaction(transaction)}
+                                className="h-8 w-8 p-0 text-gray-400 hover:text-blue-500 hover:bg-blue-50"
+                                title="Ajustar parcelas"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteTransaction(transaction.id, transaction.description)}
+                                disabled={deletingId === transaction.id}
+                                className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                                title="Excluir compra"
+                              >
+                                {deletingId === transaction.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       )
@@ -780,6 +795,13 @@ export default function CardCrud({ cards, transactions = [] }: CardCrudProps) {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Modal de Edicao */}
+      <EditTransactionModal
+        transaction={editingTransaction}
+        isOpen={!!editingTransaction}
+        onClose={() => setEditingTransaction(null)}
+      />
     </>
   )
 }

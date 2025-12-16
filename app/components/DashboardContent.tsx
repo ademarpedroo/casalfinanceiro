@@ -27,7 +27,16 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+interface User {
+  id?: string
+  name?: string | null
+  email?: string | null
+  image?: string | null
+  createdAt?: Date
+}
+
 interface DashboardContentProps {
+  user: User
   kpis: {
     totalIncome: number
     totalExpenses: number
@@ -66,6 +75,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 type PeriodFilter = '7d' | '1m' | '3m' | '6m' | '1y' | 'all'
 
 export default function DashboardContent({
+  user,
   kpis,
   incomes,
   expenses,
@@ -286,18 +296,14 @@ export default function DashboardContent({
   // Loading component - DEVE vir DEPOIS de todos os hooks
   if (isLoading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-6">
-          {/* Spinner animado */}
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-4">
+          {/* Spinner */}
           <div className="relative">
-            <div className="w-16 h-16 border-4 border-indigo-100 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-16 h-16 border-4 border-transparent border-t-indigo-600 rounded-full animate-spin"></div>
+            <div className="w-12 h-12 border-4 border-indigo-100 rounded-full"></div>
+            <div className="absolute top-0 left-0 w-12 h-12 border-4 border-transparent border-t-indigo-600 rounded-full animate-spin"></div>
           </div>
-          {/* Texto */}
-          <div className="text-center">
-            <p className="text-gray-700 font-medium">Carregando</p>
-            <p className="text-gray-400 text-sm">Aguarde um momento...</p>
-          </div>
+          <p className="text-gray-500 text-sm">Carregando...</p>
         </div>
       </div>
     )
@@ -781,9 +787,113 @@ export default function DashboardContent({
     )
   }
 
+  // Seção de Perfil
+  if (activeSection === 'profile') {
+    const totalIncomes = incomes.reduce((sum, inc) => sum + inc.amount, 0)
+    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0)
+    const balance = totalIncomes - totalExpenses
+    const memberSince = user.createdAt ? new Date(user.createdAt).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    }) : 'Data não disponível'
+
+    const userInitials = user.name
+      ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+      : user.email?.charAt(0).toUpperCase() || 'U'
+
+    return (
+      <div className="space-y-6 max-w-3xl mx-auto">
+        {/* Card do Usuario */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-center gap-5">
+            {/* Avatar */}
+            {user.image ? (
+              <img
+                src={user.image}
+                alt={user.name || 'Avatar'}
+                className="w-20 h-20 rounded-full object-cover border-2 border-gray-100"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center border-2 border-gray-200">
+                <span className="text-gray-500 text-2xl font-semibold">{userInitials}</span>
+              </div>
+            )}
+
+            {/* Info */}
+            <div className="flex-1">
+              <h2 className="text-xl font-semibold text-gray-900">{user.name || 'Usuario'}</h2>
+              <p className="text-gray-500 text-sm">{user.email}</p>
+              <p className="text-gray-400 text-xs mt-1">Membro desde {memberSince}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Resumo Financeiro */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h3 className="font-medium text-gray-900">Resumo Financeiro</h3>
+          </div>
+
+          <div className="divide-y divide-gray-100">
+            <div className="flex items-center justify-between px-6 py-4">
+              <span className="text-gray-600">Total de Receitas</span>
+              <span className="font-medium text-gray-900">{formatCurrency(totalIncomes)}</span>
+            </div>
+            <div className="flex items-center justify-between px-6 py-4">
+              <span className="text-gray-600">Total de Despesas</span>
+              <span className="font-medium text-gray-900">{formatCurrency(totalExpenses)}</span>
+            </div>
+            <div className="flex items-center justify-between px-6 py-4 bg-gray-50">
+              <span className="text-gray-900 font-medium">Saldo</span>
+              <span className={`font-semibold ${balance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {formatCurrency(balance)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Estatisticas */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h3 className="font-medium text-gray-900">Estatisticas</h3>
+          </div>
+
+          <div className="divide-y divide-gray-100">
+            <div className="flex items-center justify-between px-6 py-4">
+              <span className="text-gray-600">Receitas cadastradas</span>
+              <span className="font-medium text-gray-900">{incomes.length}</span>
+            </div>
+            <div className="flex items-center justify-between px-6 py-4">
+              <span className="text-gray-600">Despesas cadastradas</span>
+              <span className="font-medium text-gray-900">{expenses.length}</span>
+            </div>
+            <div className="flex items-center justify-between px-6 py-4">
+              <span className="text-gray-600">Compras parceladas</span>
+              <span className="font-medium text-gray-900">{transactions.length}</span>
+            </div>
+            <div className="flex items-center justify-between px-6 py-4">
+              <span className="text-gray-600">Cartoes cadastrados</span>
+              <span className="font-medium text-gray-900">{cards.length}</span>
+            </div>
+            <div className="flex items-center justify-between px-6 py-4">
+              <span className="text-gray-600">Categorias</span>
+              <span className="font-medium text-gray-900">{categories.length}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
-      <div>Seção não encontrada</div>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Secao nao encontrada</h2>
+          <p className="text-gray-500">A pagina que voce procura nao existe.</p>
+        </div>
+      </div>
       <FloatingActionButton categories={categories} />
     </>
   )

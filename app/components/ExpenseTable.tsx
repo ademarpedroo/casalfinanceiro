@@ -3,18 +3,7 @@
 import { useState } from 'react'
 import { deleteExpense, markExpenseAsPaid } from '@/app/actions/expenses'
 import { markInstallmentAsPaid, markInstallmentAsUnpaid, deleteTransaction } from '@/app/actions/cards'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Trash2, TrendingDown, ArrowUpDown, Check, Clock, CreditCard } from 'lucide-react'
+import { Trash2, TrendingDown, Calendar, Check, CreditCard, Clock, Loader2 } from 'lucide-react'
 import Toast from './Toast'
 
 interface Expense {
@@ -74,7 +63,10 @@ function formatCurrency(value: number): string {
 }
 
 function formatDate(date: Date): string {
-  return new Date(date).toLocaleDateString('pt-BR')
+  return new Date(date).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+  })
 }
 
 // Tipo unificado para exibicao
@@ -90,7 +82,6 @@ interface UnifiedExpense {
     color: string
     icon: string | null
   } | null
-  // Card-specific fields
   isCardExpense: boolean
   cardName?: string
   cardColor?: string
@@ -121,9 +112,6 @@ export default function ExpenseTable({
 }: ExpenseTableProps) {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [sortField, setSortField] = useState<'description' | 'amount' | 'dueDate'>('dueDate')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   // Get installments from transactions (filtered by period if needed)
   const cardInstallments: UnifiedExpense[] = transactions.flatMap(t =>
@@ -136,7 +124,7 @@ export default function ExpenseTable({
       })
       .map(inst => ({
         id: `card-${inst.id}`,
-        description: `${t.description}`,
+        description: t.description,
         amount: inst.amount,
         dueDate: new Date(inst.dueDate),
         isPaid: inst.isPaid,
@@ -177,30 +165,9 @@ export default function ExpenseTable({
     allExpenses = allExpenses.filter(exp => exp.isPaid)
   }
 
-  const sortedExpenses = [...allExpenses].sort((a, b) => {
-    let comparison = 0
-    switch (sortField) {
-      case 'description':
-        comparison = a.description.localeCompare(b.description)
-        break
-      case 'amount':
-        comparison = a.amount - b.amount
-        break
-      case 'dueDate':
-        comparison = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
-        break
-    }
-    return sortOrder === 'asc' ? comparison : -comparison
-  })
-
-  const toggleSort = (field: typeof sortField) => {
-    if (sortField === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortOrder('desc')
-    }
-  }
+  const sortedExpenses = [...allExpenses].sort((a, b) =>
+    new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+  )
 
   async function handleMarkPaid(exp: UnifiedExpense) {
     setLoadingId(exp.id)
@@ -255,22 +222,6 @@ export default function ExpenseTable({
     }
   }
 
-  const toggleSelectAll = () => {
-    if (selectedIds.length === sortedExpenses.length) {
-      setSelectedIds([])
-    } else {
-      setSelectedIds(sortedExpenses.map(exp => exp.id))
-    }
-  }
-
-  const toggleSelect = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(i => i !== id))
-    } else {
-      setSelectedIds([...selectedIds, id])
-    }
-  }
-
   if (sortedExpenses.length === 0) {
     return (
       <div className="text-center py-12">
@@ -295,174 +246,133 @@ export default function ExpenseTable({
         />
       )}
 
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
-            <TableHead className="w-12">
-              <Checkbox
-                checked={selectedIds.length === sortedExpenses.length && sortedExpenses.length > 0}
-                onCheckedChange={toggleSelectAll}
-              />
-            </TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2 -ml-2 font-medium hover:bg-transparent"
-                onClick={() => toggleSort('description')}
+      <div className="divide-y divide-gray-100">
+        {sortedExpenses.map((exp) => (
+          <div
+            key={exp.id}
+            className={`group flex items-center justify-between p-4 hover:bg-gray-50 transition-colors ${
+              loadingId === exp.id ? 'opacity-50' : ''
+            } ${exp.isPaid ? 'bg-gray-50/50' : ''}`}
+          >
+            {/* Left side - Info */}
+            <div className="flex items-center gap-4">
+              {/* Icon */}
+              <div
+                className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0 ${
+                  exp.isPaid ? 'opacity-50' : ''
+                }`}
+                style={{
+                  backgroundColor: exp.isCardExpense
+                    ? `${CARD_COLORS[exp.cardColor || ''] || '#6366f1'}15`
+                    : exp.category?.color
+                    ? `${exp.category.color}15`
+                    : '#f9731615',
+                }}
               >
-                Descricao
-                <ArrowUpDown className="ml-1 h-3 w-3" />
-              </Button>
-            </TableHead>
-            <TableHead>Categoria/Cartao</TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2 -ml-2 font-medium hover:bg-transparent"
-                onClick={() => toggleSort('dueDate')}
-              >
-                Vencimento
-                <ArrowUpDown className="ml-1 h-3 w-3" />
-              </Button>
-            </TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2 -ml-2 font-medium hover:bg-transparent"
-                onClick={() => toggleSort('amount')}
-              >
-                Valor
-                <ArrowUpDown className="ml-1 h-3 w-3" />
-              </Button>
-            </TableHead>
-            <TableHead className="w-24"></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sortedExpenses.map((exp) => (
-            <TableRow
-              key={exp.id}
-              className={`${loadingId === exp.id ? 'opacity-50' : ''} ${exp.isPaid ? 'bg-gray-50/50' : ''}`}
-            >
-              <TableCell>
-                <Checkbox
-                  checked={selectedIds.includes(exp.id)}
-                  onCheckedChange={() => toggleSelect(exp.id)}
-                />
-              </TableCell>
-              <TableCell>
+                {exp.isCardExpense ? (
+                  <CreditCard
+                    className="w-6 h-6"
+                    style={{ color: CARD_COLORS[exp.cardColor || ''] || '#6366f1' }}
+                  />
+                ) : (
+                  exp.category?.icon || '💸'
+                )}
+              </div>
+
+              {/* Details */}
+              <div>
                 <div className="flex items-center gap-2">
-                  <span className={`font-medium cursor-pointer ${
-                    exp.isPaid ? 'text-gray-400 line-through' : exp.isCardExpense ? 'text-blue-600 hover:text-blue-700' : 'text-orange-600 hover:text-orange-700'
-                  }`}>
+                  <h4 className={`font-semibold ${exp.isPaid ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                     {exp.description}
-                  </span>
+                  </h4>
                   {exp.isCardExpense && exp.installmentNumber && exp.installmentsCount && (
-                    <Badge variant="outline" className="text-xs py-0 font-mono">
+                    <span className="text-xs font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
                       {exp.installmentNumber}/{exp.installmentsCount}
-                    </Badge>
+                    </span>
                   )}
                   {exp.isFixed && (
-                    <Badge variant="outline" className="text-xs py-0">
-                      <Clock className="w-3 h-3 mr-1" />
+                    <span className="flex items-center text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">
+                      <Clock className="w-3 h-3 mr-0.5" />
                       Fixo
-                    </Badge>
+                    </span>
                   )}
                 </div>
-              </TableCell>
-              <TableCell>
-                {exp.isCardExpense ? (
-                  <Badge
-                    variant="secondary"
-                    className="text-xs"
-                    style={{
-                      backgroundColor: `${CARD_COLORS[exp.cardColor || ''] || '#6366f1'}15`,
-                      color: CARD_COLORS[exp.cardColor || ''] || '#6366f1',
-                    }}
-                  >
-                    <CreditCard className="w-3 h-3 mr-1" />
-                    {exp.cardName}
-                  </Badge>
-                ) : exp.category ? (
-                  <Badge
-                    variant="secondary"
-                    className="text-xs"
-                    style={{
-                      backgroundColor: `${exp.category.color}15`,
-                      color: exp.category.color,
-                    }}
-                  >
-                    {exp.category.icon} {exp.category.name}
-                  </Badge>
-                ) : (
-                  <span className="text-gray-400">-</span>
-                )}
-              </TableCell>
-              <TableCell className="text-gray-600">
-                {formatDate(exp.dueDate)}
-              </TableCell>
-              <TableCell>
-                {exp.isPaid ? (
-                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                    Pago
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
-                    Pendente
-                  </Badge>
-                )}
-              </TableCell>
-              <TableCell className={`font-semibold ${
-                exp.isPaid ? 'text-gray-400' : exp.isCardExpense ? 'text-blue-600' : 'text-orange-600'
+                <div className="flex items-center gap-3 mt-1">
+                  {exp.isCardExpense ? (
+                    <span
+                      className="text-xs font-medium px-2 py-0.5 rounded-full"
+                      style={{
+                        backgroundColor: `${CARD_COLORS[exp.cardColor || ''] || '#6366f1'}15`,
+                        color: CARD_COLORS[exp.cardColor || ''] || '#6366f1',
+                      }}
+                    >
+                      {exp.cardName}
+                    </span>
+                  ) : exp.category && (
+                    <span
+                      className="text-xs font-medium px-2 py-0.5 rounded-full"
+                      style={{
+                        backgroundColor: `${exp.category.color}15`,
+                        color: exp.category.color,
+                      }}
+                    >
+                      {exp.category.name}
+                    </span>
+                  )}
+                  <span className="flex items-center text-xs text-gray-500">
+                    <Calendar className="w-3 h-3 mr-1" />
+                    {formatDate(exp.dueDate)}
+                  </span>
+                  {exp.isPaid && (
+                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">
+                      Pago
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right side - Amount and actions */}
+            <div className="flex items-center gap-3">
+              <span className={`text-lg font-bold ${
+                exp.isPaid ? 'text-gray-400' : exp.isCardExpense ? 'text-indigo-600' : 'text-orange-600'
               }`}>
                 {formatCurrency(exp.amount)}
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  {!exp.isPaid && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleMarkPaid(exp)}
-                      disabled={loadingId === exp.id}
-                      className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                      title="Marcar como pago"
-                    >
-                      <Check className="h-4 w-4" />
-                    </Button>
+              </span>
+
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                {/* Mark as paid button */}
+                <button
+                  onClick={() => handleMarkPaid(exp)}
+                  disabled={loadingId === exp.id}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                    exp.isPaid
+                      ? 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                      : 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50'
+                  }`}
+                  title={exp.isPaid ? 'Desmarcar pagamento' : 'Marcar como pago'}
+                >
+                  {loadingId === exp.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" />
                   )}
-                  {exp.isPaid && exp.isCardExpense && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleMarkPaid(exp)}
-                      disabled={loadingId === exp.id}
-                      className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                      title="Desmarcar pagamento"
-                    >
-                      <Check className="h-4 w-4" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(exp)}
-                    disabled={loadingId === exp.id}
-                    className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
-                    title={exp.isCardExpense ? 'Excluir compra (todas parcelas)' : 'Excluir'}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                </button>
+
+                {/* Delete button */}
+                <button
+                  onClick={() => handleDelete(exp)}
+                  disabled={loadingId === exp.id}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                  title={exp.isCardExpense ? 'Excluir compra (todas parcelas)' : 'Excluir'}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </>
   )
 }

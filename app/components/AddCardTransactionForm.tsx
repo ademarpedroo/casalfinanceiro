@@ -1,19 +1,23 @@
 'use client'
 
 import { createTransaction } from '@/app/actions/cards'
-import { useTransition, useState } from 'react'
+import { useTransition, useState, useMemo } from 'react'
 import Toast from './Toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { DatePicker } from '@/components/ui/date-picker'
-import { CreditCard, Loader2, ShoppingCart } from 'lucide-react'
+import { CreditCard, Loader2, ShoppingCart, Calendar, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { addMonths, setDate, format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
 interface Card {
   id: string
   name: string
   color: string
   brand: string
+  closingDay: number
+  dueDay: number
   lastFourDigits?: string | null
 }
 
@@ -35,6 +39,67 @@ const CARD_COLORS: Record<string, string> = {
 
 const INSTALLMENT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
+const MONTHS = [
+  'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+]
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+}
+
+// Calcula a primeira fatura baseado na data de compra e dia de fechamento
+function calculateFirstInvoice(purchaseDate: Date, closingDay: number, dueDay: number): { month: number; year: number; dueDate: Date } {
+  let billingCycleClosingDate = setDate(purchaseDate, closingDay)
+
+  // Se a compra foi DEPOIS do fechamento, vai para a proxima fatura
+  if (purchaseDate.getDate() > closingDay) {
+    billingCycleClosingDate = addMonths(billingCycleClosingDate, 1)
+  }
+
+  // Calcula a data de vencimento
+  let firstDueDate = setDate(billingCycleClosingDate, dueDay)
+
+  // Se o dia de vencimento é menor que o de fechamento, o vencimento é no mes seguinte
+  if (dueDay < closingDay) {
+    firstDueDate = addMonths(firstDueDate, 1)
+  }
+
+  return {
+    month: firstDueDate.getMonth(),
+    year: firstDueDate.getFullYear(),
+    dueDate: firstDueDate
+  }
+}
+
+// Gera lista de faturas disponiveis (6 meses para tras e 12 para frente)
+function generateInvoiceOptions(): { month: number; year: number; label: string }[] {
+  const options: { month: number; year: number; label: string }[] = []
+  const now = new Date()
+
+  // 6 meses para tras
+  for (let i = 6; i >= 1; i--) {
+    const date = addMonths(now, -i)
+    options.push({
+      month: date.getMonth(),
+      year: date.getFullYear(),
+      label: `${MONTHS[date.getMonth()]} ${date.getFullYear()}`
+    })
+  }
+
+  // Mes atual e 12 meses para frente
+  for (let i = 0; i <= 12; i++) {
+    const date = addMonths(now, i)
+    options.push({
+      month: date.getMonth(),
+      year: date.getFullYear(),
+      label: `${MONTHS[date.getMonth()]} ${date.getFullYear()}`
+    })
+  }
+
+  return options
+}
+
 export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTransactionFormProps) {
   const [isPending, startTransition] = useTransition()
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
@@ -42,10 +107,56 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
   const [selectedInstallments, setSelectedInstallments] = useState<number>(1)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
   const [amount, setAmount] = useState<string>('')
+  const [paidInstallments, setPaidInstallments] = useState<number>(0)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [customFirstInvoice, setCustomFirstInvoice] = useState<{ month: number; year: number } | null>(null)
 
-  const installmentValue = amount && selectedInstallments > 0
-    ? parseFloat(amount) / selectedInstallments
-    : 0
+  const card = cards.find(c => c.id === selectedCard)
+  const invoiceOptions = useMemo(() => generateInvoiceOptions(), [])
+
+  // Calcula a primeira fatura automaticamente ou usa a customizada
+  const firstInvoice = useMemo(() => {
+    if (!card || !selectedDate) return null
+
+    if (customFirstInvoice) {
+      // Usa a fatura customizada
+      const dueDate = setDate(new Date(customFirstInvoice.year, customFirstInvoice.month, 1), card.dueDay)
+      return {
+        month: customFirstInvoice.month,
+        year: customFirstInvoice.year,
+        dueDate
+      }
+    }
+
+    return calculateFirstInvoice(selectedDate, card.closingDay, card.dueDay)
+  }, [card, selectedDate, customFirstInvoice])
+
+  // Preview das parcelas
+  const installmentsPreview = useMemo(() => {
+    if (!firstInvoice || !amount || selectedInstallments < 1) return []
+
+    const installmentAmount = parseFloat(amount) / selectedInstallments
+    const preview: { number: number; month: string; year: number; amount: number; isPaid: boolean }[] = []
+
+    for (let i = 0; i < selectedInstallments; i++) {
+      const dueDate = addMonths(firstInvoice.dueDate, i)
+      preview.push({
+        number: i + 1,
+        month: MONTHS[dueDate.getMonth()],
+        year: dueDate.getFullYear(),
+        amount: installmentAmount,
+        isPaid: i < paidInstallments
+      })
+    }
+
+    return preview
+  }, [firstInvoice, amount, selectedInstallments, paidInstallments])
+
+  const pendingInstallments = selectedInstallments - paidInstallments
+  const pendingAmount = amount ? (parseFloat(amount) / selectedInstallments) * pendingInstallments : 0
+
+  // Verifica se a compra e retroativa (data no passado)
+  const isRetroactive = selectedDate && selectedDate < new Date(new Date().setHours(0, 0, 0, 0))
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -56,10 +167,26 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
       return
     }
 
+    if (paidInstallments >= selectedInstallments) {
+      setToast({ message: 'Parcelas pagas nao podem ser maior ou igual ao total', type: 'error' })
+      return
+    }
+
     formData.set('cardId', selectedCard)
     formData.set('installments', selectedInstallments.toString())
+    formData.set('paidInstallments', paidInstallments.toString())
+
     if (selectedDate) {
       formData.set('purchaseDate', selectedDate.toISOString().split('T')[0])
+    }
+
+    // Se tem primeira fatura customizada, envia
+    if (customFirstInvoice) {
+      formData.set('firstInvoiceMonth', customFirstInvoice.month.toString())
+      formData.set('firstInvoiceYear', customFirstInvoice.year.toString())
+    } else if (firstInvoice) {
+      formData.set('firstInvoiceMonth', firstInvoice.month.toString())
+      formData.set('firstInvoiceYear', firstInvoice.year.toString())
     }
 
     startTransition(async () => {
@@ -73,6 +200,9 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
         setSelectedInstallments(1)
         setSelectedDate(new Date())
         setAmount('')
+        setPaidInstallments(0)
+        setCustomFirstInvoice(null)
+        setShowAdvanced(false)
         onSuccess?.()
       } else {
         setToast({ message: result?.error || 'Erro desconhecido', type: 'error' })
@@ -100,25 +230,28 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              {cards.map(card => (
+              {cards.map(c => (
                 <button
-                  key={card.id}
+                  key={c.id}
                   type="button"
-                  onClick={() => setSelectedCard(selectedCard === card.id ? '' : card.id)}
+                  onClick={() => {
+                    setSelectedCard(selectedCard === c.id ? '' : c.id)
+                    setCustomFirstInvoice(null) // Reset quando troca de cartao
+                  }}
                   disabled={isPending}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 border-2 ${
-                    selectedCard === card.id
+                    selectedCard === c.id
                       ? 'border-blue-500 bg-blue-50 scale-[1.02]'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <div
                     className="w-8 h-5 rounded flex items-center justify-center text-white text-[10px] font-bold"
-                    style={{ backgroundColor: CARD_COLORS[card.color] || '#820AD1' }}
+                    style={{ backgroundColor: CARD_COLORS[c.color] || '#820AD1' }}
                   >
-                    {card.lastFourDigits ? `•${card.lastFourDigits.slice(-2)}` : '••'}
+                    {c.lastFourDigits ? `•${c.lastFourDigits.slice(-2)}` : '••'}
                   </div>
-                  <span className="truncate">{card.name}</span>
+                  <span className="truncate">{c.name}</span>
                 </button>
               ))}
             </div>
@@ -167,12 +300,28 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
             </Label>
             <DatePicker
               date={selectedDate}
-              onDateChange={setSelectedDate}
+              onDateChange={(date) => {
+                setSelectedDate(date)
+                setCustomFirstInvoice(null) // Reset quando muda a data
+              }}
               placeholder="Data da compra"
               disabled={isPending}
             />
           </div>
         </div>
+
+        {/* Alerta de compra retroativa */}
+        {isRetroactive && (
+          <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium text-amber-800">Compra retroativa detectada</p>
+              <p className="text-amber-700 mt-0.5">
+                Esta compra foi feita no passado. Use as opcoes avancadas para indicar quantas parcelas ja foram pagas.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Parcelas */}
         <div className="space-y-2">
@@ -182,7 +331,12 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
               <button
                 key={num}
                 type="button"
-                onClick={() => setSelectedInstallments(num)}
+                onClick={() => {
+                  setSelectedInstallments(num)
+                  if (paidInstallments >= num) {
+                    setPaidInstallments(Math.max(0, num - 1))
+                  }
+                }}
                 disabled={isPending}
                 className={`w-10 h-10 rounded-lg text-sm font-semibold transition-all duration-200 ${
                   selectedInstallments === num
@@ -194,15 +348,140 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
               </button>
             ))}
           </div>
-          {amount && selectedInstallments > 1 && (
-            <p className="text-sm text-gray-500 mt-2">
-              {selectedInstallments}x de{' '}
-              <span className="font-semibold text-blue-600">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(installmentValue)}
-              </span>
-            </p>
-          )}
         </div>
+
+        {/* Info da Fatura (sempre visivel quando cartao selecionado) */}
+        {card && firstInvoice && amount && (
+          <div className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">Distribuicao das Parcelas</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+              >
+                {showAdvanced ? 'Ocultar opcoes' : 'Opcoes avancadas'}
+                {showAdvanced ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+            </div>
+
+            {/* Resumo rapido */}
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="bg-white rounded-lg p-3 border">
+                <p className="text-xs text-gray-500">Primeira Fatura</p>
+                <p className="font-semibold text-gray-900">
+                  {MONTHS[firstInvoice.month]} {firstInvoice.year}
+                </p>
+              </div>
+              <div className="bg-white rounded-lg p-3 border">
+                <p className="text-xs text-gray-500">Valor por Parcela</p>
+                <p className="font-semibold text-blue-600">
+                  {formatCurrency(parseFloat(amount) / selectedInstallments)}
+                </p>
+              </div>
+            </div>
+
+            {/* Opcoes avancadas */}
+            {showAdvanced && (
+              <div className="space-y-4 pt-3 border-t border-gray-200">
+                {/* Selecionar primeira fatura */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-gray-600">Ajustar primeira fatura</Label>
+                  <select
+                    value={customFirstInvoice ? `${customFirstInvoice.month}-${customFirstInvoice.year}` : `${firstInvoice.month}-${firstInvoice.year}`}
+                    onChange={(e) => {
+                      const [month, year] = e.target.value.split('-').map(Number)
+                      setCustomFirstInvoice({ month, year })
+                    }}
+                    className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm"
+                  >
+                    {invoiceOptions.map(opt => (
+                      <option key={`${opt.month}-${opt.year}`} value={`${opt.month}-${opt.year}`}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500">
+                    Use isso se a compra foi feita em outra data ou para ajustar manualmente
+                  </p>
+                </div>
+
+                {/* Parcelas ja pagas */}
+                {selectedInstallments > 1 && (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-gray-600">Parcelas ja pagas</Label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min="0"
+                        max={selectedInstallments - 1}
+                        value={paidInstallments}
+                        onChange={(e) => setPaidInstallments(parseInt(e.target.value))}
+                        className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                      />
+                      <span className="w-16 text-center font-semibold text-sm bg-emerald-100 text-emerald-700 px-2 py-1 rounded">
+                        {paidInstallments}/{selectedInstallments}
+                      </span>
+                    </div>
+                    {paidInstallments > 0 && (
+                      <p className="text-xs text-emerald-600">
+                        {paidInstallments} parcela{paidInstallments > 1 ? 's' : ''} ja paga{paidInstallments > 1 ? 's' : ''} ({formatCurrency((parseFloat(amount) / selectedInstallments) * paidInstallments)})
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Preview das parcelas */}
+            {selectedInstallments > 1 && (
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <p className="text-xs text-gray-500 mb-2">Preview das parcelas:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {installmentsPreview.slice(0, 6).map((inst) => (
+                    <div
+                      key={inst.number}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
+                        inst.isPaid
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {inst.isPaid && <CheckCircle2 className="w-3 h-3" />}
+                      <span className="font-mono">{inst.number}/{selectedInstallments}</span>
+                      <span className="text-gray-400">•</span>
+                      <span>{inst.month.slice(0, 3)}/{inst.year.toString().slice(-2)}</span>
+                    </div>
+                  ))}
+                  {installmentsPreview.length > 6 && (
+                    <div className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-500">
+                      +{installmentsPreview.length - 6} mais
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Resumo final */}
+            {paidInstallments > 0 && (
+              <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-blue-500" />
+                    <span className="text-sm text-blue-700">Parcelas restantes</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-bold text-blue-700">{pendingInstallments}x</span>
+                    <span className="text-sm text-blue-600 ml-2">{formatCurrency(pendingAmount)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Botao Submit */}
         <Button
@@ -218,7 +497,10 @@ export default function AddCardTransactionForm({ cards, onSuccess }: AddCardTran
           ) : (
             <>
               <ShoppingCart className="mr-2 h-5 w-5" />
-              Adicionar Compra
+              {paidInstallments > 0
+                ? `Adicionar Compra (${pendingInstallments} parcelas pendentes)`
+                : 'Adicionar Compra'
+              }
             </>
           )}
         </Button>

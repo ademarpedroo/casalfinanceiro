@@ -2,18 +2,7 @@
 
 import { useState } from 'react'
 import { deleteIncome } from '@/app/actions/income'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Trash2, TrendingUp, ArrowUpDown } from 'lucide-react'
+import { Trash2, TrendingUp, Calendar, Loader2 } from 'lucide-react'
 import Toast from './Toast'
 
 interface Income {
@@ -36,7 +25,10 @@ function formatCurrency(value: number): string {
 }
 
 function formatDate(date: Date): string {
-  return new Date(date).toLocaleDateString('pt-BR')
+  return new Date(date).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+  })
 }
 
 interface IncomeTableProps {
@@ -47,39 +39,15 @@ interface IncomeTableProps {
 export default function IncomeTable({ incomes, searchFilter = '' }: IncomeTableProps) {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [sortField, setSortField] = useState<'description' | 'amount' | 'date'>('date')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   const filteredIncomes = incomes.filter(inc =>
     inc.description.toLowerCase().includes(searchFilter.toLowerCase()) ||
     inc.category?.name.toLowerCase().includes(searchFilter.toLowerCase())
   )
 
-  const sortedIncomes = [...filteredIncomes].sort((a, b) => {
-    let comparison = 0
-    switch (sortField) {
-      case 'description':
-        comparison = a.description.localeCompare(b.description)
-        break
-      case 'amount':
-        comparison = a.amount - b.amount
-        break
-      case 'date':
-        comparison = new Date(a.date).getTime() - new Date(b.date).getTime()
-        break
-    }
-    return sortOrder === 'asc' ? comparison : -comparison
-  })
-
-  const toggleSort = (field: typeof sortField) => {
-    if (sortField === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortOrder('desc')
-    }
-  }
+  const sortedIncomes = [...filteredIncomes].sort((a, b) =>
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  )
 
   async function handleDelete(id: string, description: string) {
     if (confirm(`Excluir "${description}"?`)) {
@@ -94,27 +62,11 @@ export default function IncomeTable({ incomes, searchFilter = '' }: IncomeTableP
     }
   }
 
-  const toggleSelectAll = () => {
-    if (selectedIds.length === sortedIncomes.length) {
-      setSelectedIds([])
-    } else {
-      setSelectedIds(sortedIncomes.map(inc => inc.id))
-    }
-  }
-
-  const toggleSelect = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(i => i !== id))
-    } else {
-      setSelectedIds([...selectedIds, id])
-    }
-  }
-
   if (sortedIncomes.length === 0) {
     return (
       <div className="text-center py-12">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
-          <TrendingUp className="w-8 h-8 text-green-500" />
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 mb-4">
+          <TrendingUp className="w-8 h-8 text-emerald-500" />
         </div>
         <h3 className="text-lg font-medium text-gray-900 mb-1">Nenhuma receita encontrada</h3>
         <p className="text-gray-500">
@@ -134,106 +86,70 @@ export default function IncomeTable({ incomes, searchFilter = '' }: IncomeTableP
         />
       )}
 
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-gray-50/50 hover:bg-gray-50/50">
-            <TableHead className="w-12">
-              <Checkbox
-                checked={selectedIds.length === sortedIncomes.length}
-                onCheckedChange={toggleSelectAll}
-              />
-            </TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2 -ml-2 font-medium hover:bg-transparent"
-                onClick={() => toggleSort('description')}
+      <div className="divide-y divide-gray-100">
+        {sortedIncomes.map((inc) => (
+          <div
+            key={inc.id}
+            className={`group flex items-center justify-between p-4 hover:bg-gray-50 transition-colors ${
+              loadingId === inc.id ? 'opacity-50' : ''
+            }`}
+          >
+            {/* Left side - Info */}
+            <div className="flex items-center gap-4">
+              {/* Icon */}
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0"
+                style={{
+                  backgroundColor: inc.category?.color ? `${inc.category.color}15` : '#10b98115',
+                }}
               >
-                Descricao
-                <ArrowUpDown className="ml-1 h-3 w-3" />
-              </Button>
-            </TableHead>
-            <TableHead>Categoria</TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2 -ml-2 font-medium hover:bg-transparent"
-                onClick={() => toggleSort('date')}
-              >
-                Data
-                <ArrowUpDown className="ml-1 h-3 w-3" />
-              </Button>
-            </TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2 -ml-2 font-medium hover:bg-transparent"
-                onClick={() => toggleSort('amount')}
-              >
-                Valor
-                <ArrowUpDown className="ml-1 h-3 w-3" />
-              </Button>
-            </TableHead>
-            <TableHead className="w-12"></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sortedIncomes.map((inc) => (
-            <TableRow
-              key={inc.id}
-              className={loadingId === inc.id ? 'opacity-50' : ''}
-            >
-              <TableCell>
-                <Checkbox
-                  checked={selectedIds.includes(inc.id)}
-                  onCheckedChange={() => toggleSelect(inc.id)}
-                />
-              </TableCell>
-              <TableCell>
-                <span className="font-medium text-green-600 hover:text-green-700 cursor-pointer">
-                  {inc.description}
-                </span>
-              </TableCell>
-              <TableCell>
-                {inc.category ? (
-                  <Badge
-                    variant="secondary"
-                    className="text-xs"
-                    style={{
-                      backgroundColor: `${inc.category.color}15`,
-                      color: inc.category.color,
-                    }}
-                  >
-                    {inc.category.icon} {inc.category.name}
-                  </Badge>
-                ) : (
-                  <span className="text-gray-400">-</span>
-                )}
-              </TableCell>
-              <TableCell className="text-gray-600">
-                {formatDate(inc.date)}
-              </TableCell>
-              <TableCell className="font-semibold text-green-600">
+                {inc.category?.icon || '💰'}
+              </div>
+
+              {/* Details */}
+              <div>
+                <h4 className="font-semibold text-gray-900">{inc.description}</h4>
+                <div className="flex items-center gap-3 mt-1">
+                  {inc.category && (
+                    <span
+                      className="text-xs font-medium px-2 py-0.5 rounded-full"
+                      style={{
+                        backgroundColor: `${inc.category.color}15`,
+                        color: inc.category.color,
+                      }}
+                    >
+                      {inc.category.name}
+                    </span>
+                  )}
+                  <span className="flex items-center text-xs text-gray-500">
+                    <Calendar className="w-3 h-3 mr-1" />
+                    {formatDate(inc.date)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right side - Amount and actions */}
+            <div className="flex items-center gap-4">
+              <span className="text-lg font-bold text-emerald-600">
                 {formatCurrency(inc.amount)}
-              </TableCell>
-              <TableCell>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(inc.id, inc.description)}
-                  disabled={loadingId === inc.id}
-                  className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
-                >
+              </span>
+
+              <button
+                onClick={() => handleDelete(inc.id, inc.description)}
+                disabled={loadingId === inc.id}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+              >
+                {loadingId === inc.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
                   <Trash2 className="h-4 w-4" />
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                )}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </>
   )
 }

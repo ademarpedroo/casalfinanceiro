@@ -178,6 +178,9 @@ export async function createTransaction(data: FormData) {
     const amount = parseFloat(data.get('amount') as string)
     const installments = parseInt(data.get('installments') as string)
     const purchaseDateRaw = data.get('purchaseDate') as string // YYYY-MM-DD
+    const paidInstallments = parseInt(data.get('paidInstallments') as string) || 0
+    const firstInvoiceMonth = data.get('firstInvoiceMonth') ? parseInt(data.get('firstInvoiceMonth') as string) : null
+    const firstInvoiceYear = data.get('firstInvoiceYear') ? parseInt(data.get('firstInvoiceYear') as string) : null
 
     const purchaseDate = startOfDay(parseISO(purchaseDateRaw))
 
@@ -190,22 +193,34 @@ export async function createTransaction(data: FormData) {
       return { error: 'Você não tem permissão para criar transações neste cartão' }
     }
 
-    // 2. Calculate First Due Date
-    // Determine "Billing Cycle Closing Date" for the purchase.
-    let billingCycleClosingDate = setDate(purchaseDate, card.closingDay)
-
-    // If purchase is AFTER closing day, it belongs to the NEXT billing cycle.
-    if (purchaseDate.getDate() > card.closingDay) {
-       billingCycleClosingDate = addMonths(billingCycleClosingDate, 1)
+    // Validar parcelas pagas
+    if (paidInstallments >= installments) {
+      return { error: 'Parcelas pagas não podem ser maior ou igual ao total' }
     }
 
-    // Now calculate the Due Date relative to that Closing Date.
-    let firstDueDate = setDate(billingCycleClosingDate, card.dueDay)
+    // 2. Calculate First Due Date
+    let firstDueDate: Date
 
-    // If Due Day is smaller than Closing Day (e.g. Close 25th, Due 5th),
-    // it means the Due Date is in the following month.
-    if (card.dueDay < card.closingDay) {
-        firstDueDate = addMonths(firstDueDate, 1)
+    // Se o usuario informou a primeira fatura manualmente, usa ela
+    if (firstInvoiceMonth !== null && firstInvoiceYear !== null) {
+      firstDueDate = setDate(new Date(firstInvoiceYear, firstInvoiceMonth, 1), card.dueDay)
+    } else {
+      // Calcula automaticamente baseado na data de compra
+      let billingCycleClosingDate = setDate(purchaseDate, card.closingDay)
+
+      // If purchase is AFTER closing day, it belongs to the NEXT billing cycle.
+      if (purchaseDate.getDate() > card.closingDay) {
+         billingCycleClosingDate = addMonths(billingCycleClosingDate, 1)
+      }
+
+      // Now calculate the Due Date relative to that Closing Date.
+      firstDueDate = setDate(billingCycleClosingDate, card.dueDay)
+
+      // If Due Day is smaller than Closing Day (e.g. Close 25th, Due 5th),
+      // it means the Due Date is in the following month.
+      if (card.dueDay < card.closingDay) {
+          firstDueDate = addMonths(firstDueDate, 1)
+      }
     }
 
     // Create Transaction
@@ -222,23 +237,33 @@ export async function createTransaction(data: FormData) {
     // Create Installments
     // We fix the precision to 2 decimals to avoid float errors
     const installmentAmount = parseFloat((amount / installments).toFixed(2))
-    // Adjust last installment for rounding differences if needed?
-    // For simplicity V1: just standard division.
+    // Ajusta a ultima parcela para corrigir arredondamento
+    const lastInstallmentAmount = parseFloat((amount - (installmentAmount * (installments - 1))).toFixed(2))
 
     for (let i = 0; i < installments; i++) {
       const dueDate = addMonths(firstDueDate, i)
+      const isAlreadyPaid = i < paidInstallments
+      const isLastInstallment = i === installments - 1
+
       await prisma.installment.create({
         data: {
           transactionId: transaction.id,
           number: i + 1,
-          amount: installmentAmount,
-          dueDate
+          amount: isLastInstallment ? lastInstallmentAmount : installmentAmount,
+          dueDate,
+          isPaid: isAlreadyPaid,
+          paidAt: isAlreadyPaid ? new Date() : null
         }
       })
     }
 
+    const pendingCount = installments - paidInstallments
+    const message = paidInstallments > 0
+      ? `Compra criada! ${paidInstallments} parcela${paidInstallments > 1 ? 's' : ''} já paga${paidInstallments > 1 ? 's' : ''}, ${pendingCount} pendente${pendingCount > 1 ? 's' : ''}.`
+      : 'Transação criada com sucesso!'
+
     revalidatePath('/')
-    return { success: true, message: 'Transação criada com sucesso!' }
+    return { success: true, message }
   } catch (error) {
     console.error('Error creating transaction:', error)
     return { error: 'Erro ao criar transação. Tente novamente.' }
@@ -399,6 +424,75 @@ export async function markInstallmentAsUnpaid(installmentId: string) {
   } catch (error) {
     console.error('Error unmarking installment:', error)
     return { error: 'Erro ao desmarcar parcela' }
+  }
+}
+
+// Update transaction installments (change first invoice date)
+export async function updateTransactionInvoice(
+  transactionId: string,
+  firstInvoiceMonth: number,
+  firstInvoiceYear: number,
+  paidInstallmentsCount: number
+) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { error: 'Você precisa estar logado' }
+    }
+
+    // Get transaction with card info
+    const transaction = await prisma.cardTransaction.findUnique({
+      where: { id: transactionId },
+      include: {
+        card: true,
+        installments: { orderBy: { number: 'asc' } }
+      }
+    })
+
+    if (!transaction) {
+      return { error: 'Transação não encontrada' }
+    }
+
+    if (transaction.card.userId !== session.user.id) {
+      return { error: 'Você não tem permissão para editar esta transação' }
+    }
+
+    const installmentsCount = transaction.installmentsCount
+
+    if (paidInstallmentsCount >= installmentsCount) {
+      return { error: 'Parcelas pagas não podem ser maior ou igual ao total' }
+    }
+
+    // Calculate new first due date
+    const firstDueDate = setDate(
+      new Date(firstInvoiceYear, firstInvoiceMonth, 1),
+      transaction.card.dueDay
+    )
+
+    // Update each installment with new due date and paid status
+    for (let i = 0; i < transaction.installments.length; i++) {
+      const installment = transaction.installments[i]
+      const newDueDate = addMonths(firstDueDate, i)
+      const shouldBePaid = i < paidInstallmentsCount
+
+      await prisma.installment.update({
+        where: { id: installment.id },
+        data: {
+          dueDate: newDueDate,
+          isPaid: shouldBePaid,
+          paidAt: shouldBePaid ? (installment.paidAt || new Date()) : null
+        }
+      })
+    }
+
+    revalidatePath('/')
+    return {
+      success: true,
+      message: `Parcelas atualizadas! Primeira fatura: ${['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][firstInvoiceMonth]} ${firstInvoiceYear}`
+    }
+  } catch (error) {
+    console.error('Error updating transaction:', error)
+    return { error: 'Erro ao atualizar transação. Tente novamente.' }
   }
 }
 
